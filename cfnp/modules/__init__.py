@@ -1,9 +1,13 @@
+from cfnp.modules.conv import ConvCompressionModule
+from cfnp.modules.gumble import GumbleCompressionModule
 
 
-GENERATES_MODULES = {
-
+MODULES= {
+    'conv': ConvCompressionModule,
+    'gumble': GumbleCompressionModule,
 }
 
-SAMPLES_MODULES = {
-    
-}
+__all__ = [
+    'ConvCOmpressionModule',
+    'GumbleCOmpressionMOdule',
+]
