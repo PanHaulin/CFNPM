@@ -45,9 +45,10 @@ class BaseModel(pl.LightningModule):
 
         self.extra_kwargs = kwargs
 
-        # 初始化压缩模块
+        # 初始化压缩模块和相关参数
         if 'resnet' in module:
             self.module = getattr(conv, module)(self.n_features, self.n_compressed)
+            self.X_fit = self.X_fit.view(1, self.X_fit.size(1), self.X_fit.size(0), 1)
         else:
             self.module = GumbleCompressionModule()
     
@@ -106,7 +107,7 @@ class BaseModel(pl.LightningModule):
     
     def forward(self):
 
-        return self.module(self.X_fit.view(1, self.X_fit.size(1), self.X_fit.size(0), 1))
+        return self.module(self.X_fit)
 
     def on_train_end(self):
         self.logger.log_metrics({
@@ -134,17 +135,21 @@ class ClassSeparationBaseModel(BaseModel):
         
         # 分离根据coef_fit的符号分离X_fit
         coef_sign = np.sign(coef_fit)
-        counter = Counter(coef_sign)
-        self.n_positive = counter
-        self.n_negative = counter
-        self.X_fit_positive = self.X_fit[coef_sign>0]
-        self.X_fit_negative = self.X_fit[coef_sign<0]
+        counter = sorted(Counter(coef_sign).items())
+        n_positive = counter[0][1]
+        n_negative = counter[1][1]
+        self.n_positive_compressed = int(self.n_compressed * n_positive/(n_positive + n_negative))
+        self.n_negative_compressed = self.n_compressed - self.n_positive_compressed
+        self.X_fit_positive = self.X_fit.view(self.X_fit.size(2), self.X_fit.size(1))[coef_sign>0]
+        self.X_fit_negative = self.X_fit.view(self.X_fit.size(2), self.X_fit.size(1))[coef_sign<0]
 
-        # 重建module
+        # 初始化module和相关参数
         del self.module
         if 'resnet' in self.module_name:
-            self.module_processing_positve = getattr(conv, self.module_name)(self.n_features, self.n_compressed)
-            self.module_processing_negative = getattr(conv, self.module_name)(self.n_features, self.n_compressed)
+            self.module_processing_positve = getattr(conv, self.module_name)(self.n_features, self.n_positive_compressed)
+            self.module_processing_negative = getattr(conv, self.module_name)(self.n_features, self.n_negative_compressed)
+            self.X_fit_positive = self.X_fit_positive.view(1, self.X_fit_positive.size(1), self.X_fit_positive.size(0), 1)
+            self.X_fit_negative = self.X_fit_negative.view(1, self.X_fit_negative.size(1), self.X_fit_negative.size(0), 1)
         else:
             self.module_processing_positve = GumbleCompressionModule()
             self.module_processing_negative = GumbleCompressionModule()
@@ -154,6 +159,13 @@ class ClassSeparationBaseModel(BaseModel):
         X_compression_negative = self.module_processing_negative(self.X_fit_negative)
         X_compression = torch.cat((X_compression_postive, X_compression_negative), dim=0) # 按行拼接
         return X_compression
+
+    @property
+    def learnable_params(self) -> List[Dict[str, Any]]:
+        return [
+            {"name": "module_processing_positive", "params": self.module_processing_positve.parameters()},
+            {"name": "module_processing_negative", "params": self.module_processing_negative.parameters()},
+        ]
 
 class AddInstanceBaseModel(BaseModel):
     '''
