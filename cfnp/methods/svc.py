@@ -24,8 +24,8 @@ def create_svc_class(base):
     '''
 
     class CompressionForSVC(base):
-        def __init__(self, coef_fit, intercept_fit, data, **kwargs):
-            super().__init__(**kwargs)
+        def __init__(self, coef_fit, intercept_fit, **kwargs):
+            super().__init__(coef_fit=coef_fit, **kwargs)
 
             # weights(n_compressed, 1), bias(1,)
             self.fx_layer = nn.Linear(self.n_compressed, 1, bias=True)
@@ -45,7 +45,7 @@ def create_svc_class(base):
             self.n_epochs = 0
 
             # 预测用信息
-            self.data = data
+            # self.data = data
 
         def get_constrained_coef(self):
             alpha = F.softmax(torch.abs(self.fx_layer.weight),

@@ -143,6 +143,7 @@ def main():
         mode='max',
         strict=True,
     )
+    callbacks.append(early_stopping)
 
     # checkpoint save callback
     if not args.fast_dev_run:

@@ -6,6 +6,8 @@ import torch
 from argparse import ArgumentParser
 from cfnp.utils.helper import X_fit_to_tensor
 import numpy as np
+import copy
+from collections import Counter
 
 class BaseModel(pl.LightningModule):
     def __init__(
@@ -32,12 +34,14 @@ class BaseModel(pl.LightningModule):
         self.weight_decay = weight_decay
         self.scheduler = scheduler
 
-        X_fit = X_fit_to_tensor(X_fit)
-        self.register_buffer('X_fit', X_fit)
+        # X_fit = X_fit_to_tensor(X_fit)
+        # self.register_buffer('X_fit', X_fit)
+        self.register_buffer('X_fit', torch.Tensor(X_fit))
         self.n_fit = X_fit.size(2)
         self.n_features = X_fit.size(1)
         self.n_compressed = round(self.n_fit * (1- cmp_ratio))
         self.cmp_ratio = cmp_ratio
+        self.module_name = module
 
         self.extra_kwargs = kwargs
 
@@ -101,7 +105,8 @@ class BaseModel(pl.LightningModule):
         return {'optimizer':optimizer, 'lr_scheduler':scheduler_dict}
     
     def forward(self):
-        return self.module(self.X_fit)
+
+        return self.module(self.X_fit.view(1, self.X_fit.size(1), self.X_fit.size(0), 1))
 
     def on_train_end(self):
         self.logger.log_metrics({
@@ -124,12 +129,31 @@ class ClassSeparationBaseModel(BaseModel):
     init中对输入进行类分离
     forward中对输出进行合并
     '''
-    pass
-    # def forward(self):
-    #     X_compression = self.module(self.X_fit)
-    #     X_positive_compression = self.module1(self.X_positive)
-    #     X_negative_compression = self.module2(self.X_negative)
-    #     X_compression = torch 
+    def __init__(self, coef_fit, **kwargs):
+        super(ClassSeparationBaseModel, ClassSeparationBaseModel).__init__(**kwargs)
+        
+        # 分离根据coef_fit的符号分离X_fit
+        coef_sign = np.sign(coef_fit)
+        counter = Counter(coef_sign)
+        self.n_positive = counter
+        self.n_negative = counter
+        self.X_fit_positive = self.X_fit[coef_sign>0]
+        self.X_fit_negative = self.X_fit[coef_sign<0]
+
+        # 重建module
+        del self.module
+        if 'resnet' in self.module_name:
+            self.module_processing_positve = getattr(conv, self.module_name)(self.n_features, self.n_compressed)
+            self.module_processing_negative = getattr(conv, self.module_name)(self.n_features, self.n_compressed)
+        else:
+            self.module_processing_positve = GumbleCompressionModule()
+            self.module_processing_negative = GumbleCompressionModule()
+
+    def forward(self):
+        X_compression_postive = self.module_processing_positve(self.X_fit_positive)
+        X_compression_negative = self.module_processing_negative(self.X_fit_negative)
+        X_compression = torch.cat((X_compression_postive, X_compression_negative), dim=0) # 按行拼接
+        return X_compression
 
 class AddInstanceBaseModel(BaseModel):
     '''
