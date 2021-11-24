@@ -1,5 +1,5 @@
 import pytorch_lightning as pl
-from cfnp.modules.conv import ConvCompressionModule
+import cfnp.modules.conv as conv
 from cfnp.modules.gumble import GumbleCompressionModule
 from typing import Any, Callable, Dict, List, Sequence, Tuple
 import torch
@@ -19,7 +19,7 @@ class BaseModel(pl.LightningModule):
         lr: float,
         weight_decay: float,
         momentum: float,
-        scheduler: str,
+        scheduler: str = 'cosine',
         **kwargs
     ):
         super().__init__()
@@ -42,8 +42,8 @@ class BaseModel(pl.LightningModule):
         self.extra_kwargs = kwargs
 
         # 初始化压缩模块
-        if module == 'conv':
-            self.module = ConvCompressionModule()
+        if 'resnet' in module:
+            self.module = getattr(conv, module)(self.n_features, self.n_compressed)
         else:
             self.module = GumbleCompressionModule()
     
@@ -56,13 +56,19 @@ class BaseModel(pl.LightningModule):
         parser.add_argument("--num_workers", type=int, default=8)
 
         # compression
-        parser.add_argument("cmp_ratio", type=float, required=True)
+        parser.add_argument("--cmp_ratio", type=float, required=True)
 
         # hyper-opt
-        parser.add_argument("--max_eval", type=int, default=100)
+        parser.add_argument("--max_evals", type=int, default=100)
+
+        # optimizer
+        parser.add_argument("--optimizer", type=str, default='adam')
+        parser.add_argument("--lr", type=float, default=0.01)
+        parser.add_argument("--momentum", type=float, default=0.9)
+        parser.add_argument("--weight-decay", type=float, default=1e-4)
+
 
         return parent_parser
-    
     @property
     def learnable_params(self) -> List[Dict[str, Any]]:
         return [
@@ -89,7 +95,7 @@ class BaseModel(pl.LightningModule):
             assert False, f"{self.optimizer} not in (sgd, adam)"
 
         scheduler_dict = {
-                "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.epochs),
+                "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.max_epochs),
                 "interval": "epoch"
                 }
         return {'optimizer':optimizer, 'lr_scheduler':scheduler_dict}
@@ -118,12 +124,12 @@ class ClassSeparationBaseModel(BaseModel):
     init中对输入进行类分离
     forward中对输出进行合并
     '''
-    
-    def forward(self):
-        X_compression = self.module(self.X_fit)
-        X_positive_compression = self.module1(self.X_positive)
-        X_negative_compression = self.module2(self.X_negative)
-        X_compression = torch 
+    pass
+    # def forward(self):
+    #     X_compression = self.module(self.X_fit)
+    #     X_positive_compression = self.module1(self.X_positive)
+    #     X_negative_compression = self.module2(self.X_negative)
+    #     X_compression = torch 
 
 class AddInstanceBaseModel(BaseModel):
     '''

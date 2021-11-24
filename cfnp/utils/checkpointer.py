@@ -15,7 +15,7 @@ class MonitorCheckpointer(ModelCheckpoint):
         self,
         args: Namespace,
         logdir,
-        file_name,
+        filename,
         frequency: int = 1,
         # keep_previous_checkpoints: bool = False, #? 什么情况下需要保存之前的checkpoint？
         monitor: Optional[str] = None,
@@ -36,12 +36,11 @@ class MonitorCheckpointer(ModelCheckpoint):
 
         super().__init__(
             dirpath=logdir,
-            filename= file_name,
+            filename= filename,
             monitor=monitor,
             mode = mode,
             save_last=save_last,
             save_top_k=save_top_k,
-            period=frequency,
         )
 
         self.args = args
@@ -51,7 +50,7 @@ class MonitorCheckpointer(ModelCheckpoint):
         # self.keep_previous_checkpoints = keep_previous_checkpoints
 
     @staticmethod
-    def add_checkpointer_args(parent_parser: ArgumentParser):
+    def add_specific_args(parent_parser: ArgumentParser):
         """Adds user-required arguments to a parser.
 
         Args:

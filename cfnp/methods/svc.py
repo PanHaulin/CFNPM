@@ -8,7 +8,6 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import torch.nn.functional as F
 import warnings
-from methods.base import BaseModel, ClassSeparationBaseModel, AddInstanceBaseModel
 import pickle
 from sklearn.metrics import accuracy_score
 from cfnp.utils.km import get_cal_km_func_numpy, get_cal_km_func_torch
@@ -37,7 +36,7 @@ def create_svc_class(base):
             self.fx_layer.bias = nn.Parameter(torch.Tensor([intercept_fit]))
 
             # cal km func
-            self.cal_km = get_cal_km_func_torch(self.extra_args.__dict__)
+            self.cal_km = get_cal_km_func_torch(**self.extra_kwargs)
 
             # criterion
             self.criterion = nn.BCEWithLogitsLoss()
@@ -50,7 +49,7 @@ def create_svc_class(base):
 
         def get_constrained_coef(self):
             alpha = F.softmax(torch.abs(self.fx_layer.weight),
-                              dim=0)  # 行处理, (1, n_compressed)
+                              dim=-1)  # 行处理, (1, n_compressed)
             # (1, n_compressed)
             coef = alpha * torch.sign(self.fx_layer.weight)
             return coef
@@ -59,12 +58,11 @@ def create_svc_class(base):
             coef = self.get_constrained_coef()
             fx = torch.mm(km, coef.T) + self.fx_layer.bias  # (batch_size, 1)
             return fx
-
-        def get_compression_results(self) -> Tuple(np.array, np.array, np.array):
-            compressed_X_fit = (self.conv(self.X_fit)).cpu().detach().numpy()
+            
+        def get_compression_results(self) -> Tuple[np.array, np.array, np.array]:
+            compressed_X_fit = super().forward().cpu().detach().numpy()
             compressed_coef_fit = self.get_constrained_coef().data.cpu().detach().numpy()
-            compressed_intercept_fit = self.fx_layer.bias.data.cpu().detach().numpy()[
-                0]
+            compressed_intercept_fit = self.fx_layer.bias.data.cpu().detach().numpy()[0]
 
             return compressed_X_fit, compressed_coef_fit, compressed_intercept_fit
 
@@ -74,25 +72,31 @@ def create_svc_class(base):
 
             # compressing
             compressed_X_fit = super().forward()
+
             # cal km
-            # shape: (n_compressed, batch_size)
-            km = self.cal_km(compressed_X_fit, X)
+            km = self.cal_km(compressed_X_fit, X) # shape: (n_compressed, batch_size)
+
             # cal fx
+            # 由于linear.weight是(1,n_compressed)，计算xA^T + b，因此km要转置
+            # fx的维度为(batch_size, n_compressed) @ (n_compressed, 1) = (batch_size , 1)
             fx = self.cal_fx(km.T)
             del km
-
-            with torch.no_grad():
-                y_pred = torch.zeros_like(y)
-                y_pred[fx > 0] = 1
-                acc = accuracy(y_pred)
 
             # cal loss
             fx = fx.view(-1,)
             loss = self.criterion(fx, y)
 
+            # cal acc
+            with torch.no_grad():
+                y_pred = torch.zeros_like(y)
+                y_pred[fx > 0] = 1
+                acc = accuracy(y_pred.long(), y.long())
+
             if stage:
                 self.log(f'pl_{stage}_loss', loss, prog_bar=True)
                 self.log(f'pl_{stage}_acc', acc, prog_bar=True)
+            
+            return loss
 
         def training_step(self, batch, batch_idx):
 
@@ -103,11 +107,15 @@ def create_svc_class(base):
         def validation_step(self, batch, batch_idx):
             X, y = batch
             self._shared_step(X, y, 'valid')
+        
+        def test_step(self, batch, batch_idx):
+            X, y = batch
+            self._shared_step(X, y, 'test')
 
         @staticmethod
-        def add_method_specific_args(parent_parser: ArgumentParser):
+        def add_specific_args(parent_parser: ArgumentParser):
             parent_parser = super(
-                CompressionForSVC, CompressionForSVC).add_model_specific_args(parent_parser)
+                CompressionForSVC, CompressionForSVC).add_specific_args(parent_parser)
             parser = parent_parser.add_argument_group('svc')
 
             # specific
@@ -120,8 +128,8 @@ def create_svc_class(base):
             return parent_parser
 
         @staticmethod
-        def build_np_model(kernel, C, gamma, coef0, degree, **kwargs):
-            return SVC(kernel=kernel, C=C, gamma=gamma, coef0=coef0, degree=degree)
+        def build_np_model(**kwargs):
+            return SVC(kernel=kwargs['kernel'], C=kwargs['C'], gamma=kwargs['gamma'], coef0=kwargs['coef0'], degree=kwargs['degree'])
 
         @staticmethod
         def train_original_model(logger, data, args):
@@ -133,7 +141,7 @@ def create_svc_class(base):
             args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
                 args.kernel, logger.version, args.logger_run_name, time_tick)
 
-            if Path(args.checkpoints_dir).is_dir:
+            if Path(args.checkpoints_dir).is_dir():
                 if args.resume:
                     # 目录存在且指定重用
                     print('>> Load exist orignal model')
@@ -145,14 +153,14 @@ def create_svc_class(base):
                     assert False, f'Can not resume from non-existent dir {args.checkpoints_dir}'
                 print('>> Path {} does not exist, create'.format(
                     args.checkpoints_dir))
-                os.mkdirs(args.checkpoints_dir, exist_ok=True)
+                os.makedirs(args.checkpoints_dir, exist_ok=True)
 
                 # 需要训练原模型
                 # 设置默认值
                 n_features = X_train.shape[0]
 
                 if args.gamma is None:
-                    args.gamma = 1 / (n_features * X_train.vars())
+                    args.gamma = 1 / (n_features * X_train.var())
 
                 # 设置搜索空间
                 space = {
@@ -179,7 +187,7 @@ def create_svc_class(base):
                 args.gamma = best_params['gamma']
 
                 # 使用最优参数重新训练模型
-                print('>> retrain original model using best params and then inference')
+                print('>> retrain original model using best params')
                 model = CompressionForSVC.build_np_model(
                     kernel=args.kernel, C=args.C, gamma=args.gamma, coef0=args.coef0, degree=args.degree)
                 model.fit(X_train, y_train)
@@ -192,24 +200,30 @@ def create_svc_class(base):
             original_params = {
                 # 'config': model.get_params(),
                 'support_idx': model.support_,
-                'coef_fit': model.dual_coef_[0][model.support_],
+                'coef_fit': model.dual_coef_[0],
                 'intercept_fit': model.intercept_
             }
 
             # inference by rapids
+            print('>> get best svc predictition by rapids ')
             pred_train_rapids = model.predict(X_train)
             pred_test_rapids = model.predict(X_test)
             acc_train_rapids = accuracy_score(y_train, pred_train_rapids)
             acc_test_rapids = accuracy_score(y_test, pred_test_rapids)
+            print('acc_train_rapids:',acc_train_rapids)
+            print('acc_test_rapids', acc_test_rapids)
 
             # inference by params
+            print('>> get best svc predictition by params ')
             X_fit = X_train[original_params['support_idx']]
-            pred_train_params, _, acc_train_params, acc_test_params = CompressionForSVC.eval_params(
-                data, args, X_fit, original_params['coef_fit'], original_params['intercept_fit'])
-            # pred_train_params = CompressionForSVC.predict_by_params(X_train, y_train.shape, X_fit, original_params['coef_fit'], original_params['intercept_fit'], args)
-            # pred_test_params = CompressionForSVC.predict_by_params(X_test, y_train.shape, X_fit, original_params['coef_fit'], original_params['intercept_fit'], args)
-            # acc_train_params = accuracy_score(y_train, pred_train_params)
-            # acc_test_params = accuracy_score(y_test, pred_test_params)
+            # 跳过
+            # pred_train_params, _, acc_train_params, acc_test_params = CompressionForSVC.eval_params(
+            #     data, args, X_fit, original_params['coef_fit'], original_params['intercept_fit'])
+            pred_train_params = pred_train_rapids
+            acc_train_params = acc_train_rapids
+            acc_test_params = acc_test_rapids
+            print('acc_train_params:', acc_train_params)
+            print('acc_test_params:', acc_test_params)
 
             # log, 需要保证rapids和params得到的结果是一致的
             logger.log_metrics({
@@ -219,14 +233,14 @@ def create_svc_class(base):
                 'original_acc_test_params': acc_test_params
             })
 
-            return X_fit,  pred_train_params[original_params['support_idx']], original_params, args
+            return X_fit, pred_train_params[original_params['support_idx']], original_params, args
 
         @staticmethod
         def predict_by_params(X, y_shape, X_fit, coef, intercept, args):
-            cal_km = get_cal_km_func_numpy(args.__dict__)
+            cal_km = get_cal_km_func_numpy(**args.__dict__)
             y_pred = np.zeros(y_shape)
             km = cal_km(X_fit, X)
-            fx = np.sum(coef * km.T, axis=1) + intercept
+            fx = np.sum(km.T * coef, axis=1) + intercept
             y_pred[fx > 0] = 1
             return y_pred
 
@@ -237,17 +251,37 @@ def create_svc_class(base):
             pred_train_params = CompressionForSVC.predict_by_params(
                 X_train, y_train.shape, X_fit, coef, intercept, args)
             pred_test_params = CompressionForSVC.predict_by_params(
-                X_test, y_train.shape, X_fit, coef, intercept, args)
+                X_test, y_test.shape, X_fit, coef, intercept, args)
             acc_train_params = accuracy_score(y_train, pred_train_params)
             acc_test_params = accuracy_score(y_test, pred_test_params)
 
             return pred_train_params, pred_test_params, acc_train_params, acc_test_params
 
         def eval_compression_results(self, logger, data, args):
-
+            # !Warning: outside和inside得到的准确率不一致，不是kernel的问题,可能是batch的问题
             compressed_X_fit, compressed_coef_fit, compressed_intercept_fit = self.get_compression_results()
             _, _, acc_train_params, acc_test_params = CompressionForSVC.eval_params(
                 data, args, compressed_X_fit, compressed_coef_fit, compressed_intercept_fit)
+
+            print('np_acc_train_params:', acc_train_params)
+            print('np_acc_test_params:', acc_test_params)
+
+            # 验证 Tensor 和 np.array的计算是否一致
+            # X_train, y_train, X_test, y_test = data
+            # km = self.cal_km(torch.Tensor(compressed_X_fit),torch.Tensor(X_train))
+            # fx = self.cal_fx(km.T).view(-1,).detach().numpy()
+            # pred_train = np.zeros(y_train.shape)
+            # pred_train[fx>0]=1
+            # acc_train = accuracy_score(y_train, pred_train)
+
+            # km = self.cal_km(torch.Tensor(compressed_X_fit),torch.Tensor(X_test))
+            # fx = self.cal_fx(km.T).view(-1,).detach().numpy()
+            # pred_test = np.zeros(y_test.shape)
+            # pred_test[fx>0]=1
+            # acc_test = accuracy_score(y_test, pred_test)
+
+            # print('torch_acc_train_params',acc_train)
+            # print('torch_acc_test_params',acc_test)
 
             logger.log_metrics({
                 'compression_acc_train_params': acc_train_params,

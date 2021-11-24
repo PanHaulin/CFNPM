@@ -22,42 +22,34 @@ class GeneralDataModule(pl.LightningDataModule):
     '''
     读取数据用于预测
     '''
-    def __init__(self, X_train, X_test, y_train, y_test, batch_size, num_workers, **kwargs):
+    def __init__(self, X_train, X_test, y_train, y_test, batch_size, num_workers, manual_seed, **kwargs):
         super().__init__()
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.manual_seed = manual_seed
 
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_test = X_test
-        self.y_test = y_test
-        self.y_train = y_train
-    
+        self.X_train = torch.Tensor(X_train)
+        self.y_train = torch.Tensor(y_train)
+        self.X_test = torch.Tensor(X_test)
+        self.y_test = torch.Tensor(y_test)
+
     def prepare_data(self) -> None:
         pass
 
     def setup(self, stage: Optional[str] = None) -> None:
         
-        tensor_X_test = torch.Tensor(self.X_test)
-        tensor_y_test = torch.Tensor(self.y_test)
-        
         # setup train data
         if stage == 'fit' or stage is None:
-            tensor_X_train = torch.Tensor(self.X_train)
-            tensor_y_train = torch.Tensor(self.y_train)
-            self.trainset = Data.TensorDataset(tensor_X_train, tensor_y_train)
-            self.validset = Data.TensorDataset(tensor_X_test, tensor_y_test)
+            self.trainset = Data.TensorDataset(self.X_train, self.y_train)
+            self.validset = Data.TensorDataset(self.X_test, self.y_test)
+            del self.X_train
+            del self.y_train
 
         # setup test data
         if stage == 'test' or stage is None: 
-            self.testset = Data.TensorDataset(tensor_X_test, tensor_y_test)
-        
-        # del
-        del self.X_train
-        del self.y_train
-        del self.X_test
-        del self.y_test
-
+            self.testset = Data.TensorDataset(self.X_test, self.y_test)
+            del self.X_test
+            del self.y_test
         
 
     def train_dataloader(self) -> DataLoader:
@@ -70,5 +62,5 @@ class GeneralDataModule(pl.LightningDataModule):
         return DataLoader(self.validset, batch_size=self.batch_size, num_workers=self.num_workers, worker_init_fn=self.worker_init_fn)
 
     def worker_init_fn(self, worker_id):
-        np.random.seed(int(self.args.manual_seed))
+        np.random.seed(int(self.manual_seed))
 

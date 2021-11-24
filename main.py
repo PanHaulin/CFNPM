@@ -1,8 +1,10 @@
 import random
 
+import numpy as np
+
 from cfnp.args.setup import parse_args_main
 from cfnp.methods import METHODS, BASES
-from cfnp.modules import MODULES
+# from cfnp.modules import MODULES
 import cfnp.baselines as baselines
 from cfnp.utils.load_data import load_data
 from cfnp.utils.checkpointer import MonitorCheckpointer
@@ -11,7 +13,7 @@ from cfnp.utils.dm_factory import DataModuleFactory
 from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.loggers import NeptuneLogger
 from pytorch_lightning.plugins import DDPPlugin
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, EarlyStopping
 import os
 from pathlib import Path
 from cfnp.args.dataset import REGRESSION_DATASETS
@@ -28,25 +30,25 @@ def main():
         args.manual_seed = random.randint(1, 10000)
     seed_everything(args.manual_seed)
 
-    # 检查方法是否支持
-    assert args.base in BASES, f"Choose base from {BASES.keys()}"
-    assert args.method in METHODS, f"Choose method from {METHODS.keys()}"
+    # 获取方法类
     MethodClass = METHODS[args.method](BASES[args.base])
+    # assert args.base in BASES, f"Choose base from {BASES.keys()}"
+    # assert args.method in METHODS, f"Choose method from {METHODS.keys()}"
+    
 
-    # 检查模块是否支持
-    assert args.module in MODULES, f"Choose module from {MODULES.keys()}"
-    ModuleClass = MODULES[args.module]
+    # # 检查模块是否支持
+    # assert args.module in MODULES, f"Choose module from {MODULES.keys()}"
+    # ModuleClass = MODULES[args.module]
 
     # 初始化logger
     print("==> initializing logger")
     logger = NeptuneLogger(
-        offline_mode=True if args.fast_dev_run else args.offline,
+        mode='debug' if args.fast_dev_run or args.offline else 'sync',
         api_key=args.api_keys,
         project=args.logger_project_name,
         name=args.logger_run_name,
         description=args.logger_description,
-        tags=args.logger_tags,
-        close_after_fit=False
+        # tags=args.logger_tags,
     )
 
     # 生成checkpoint路径
@@ -64,7 +66,8 @@ def main():
     # 2. 返回相关参数 original_params
     # 3. 更新 args
     print("==> training original model")
-    X_fit, y_fit, original_params, args = MethodClass.train_original_models(
+    
+    X_fit, y_fit, original_params, args = MethodClass.train_original_model(
         logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
 
     # 逐个 baseline 运行
@@ -75,14 +78,26 @@ def main():
             method_base_baselines = getattr(
                 baselines,  f"{args.method.upper()}_BASED_BASELINES")
 
-        for _, BaselineClass in {**dataset_based_baselines, **method_base_baselines}:
-            print(f"==> run baseline {BaselineClass}")
+        baselines_dict = {**dataset_based_baselines, **method_base_baselines}
+        print(args.baselines)
+        for baseline_name in args.baselines:
+            print(f"==> run baseline {baseline_name}")
+            BaselineClass = baselines_dict[baseline_name]
             BaselineClass.run(
                 MethodClass=MethodClass,
                 logger=logger,
                 data=(X_fit, y_fit, X_test, y_test),
                 args=args
             )
+
+        # for _, BaselineClass in {**dataset_based_baselines, **method_base_baselines}:
+        #     print(f"==> run baseline {BaselineClass}")
+        #     BaselineClass.run(
+        #         MethodClass=MethodClass,
+        #         logger=logger,
+        #         data=(X_fit, y_fit, X_test, y_test),
+        #         args=args
+        #     )
 
     # 保存超参数
     print("==> saving args")
@@ -94,22 +109,26 @@ def main():
     # 准备训练压缩网络
     # 通过工厂类来建立构建具体的DataModule
     print("==> initializing datamodule")
+    print('X_train: ',X_train.shape)
+    print('y_train: ',X_train.shape)
+    print('X_test: ',X_test.shape)
+    print('y_test: ',y_test.shape)
     dm = DataModuleFactory.create_datamodule(
         type='general',
         args=args,
-        X_train=X_train,
+        X_train=X_fit,
         X_test=X_test,
-        y_train=y_train,
+        y_train=y_fit,
         y_test=y_test)
 
     # 模块初始化
-    print(f"==> initializing module {ModuleClass}")
-    module = ModuleClass(**args.__dict__)
+    # print(f"==> initializing module {ModuleClass}")
+    # module = ModuleClass(**args.__dict__)
 
     # 初始化模型
     print("==> initializing model")
     if not args.evaluate:
-        model = MethodClass(module=module, X_fit=X_fit, cmp_ratio=args.cmp_ratio, data=(X_train, y_train, X_test, y_test), **original_params,  **args.__dict__)
+        model = MethodClass(X_fit=X_fit, data=(X_fit, y_fit, X_test, y_test), **original_params,  **args.__dict__)
     else:
         model  = MethodClass.load_from_checkpoint(**args.__dict__)
 
@@ -117,12 +136,16 @@ def main():
     print("==> initializing callbacks")
     callbacks = []
 
+    # early stopping callback
+
+
+    # checkpoint save callback
     if not args.fast_dev_run:
-        # 调试时时不保存模型
+        # 调试时不保存模型
         ckpt = MonitorCheckpointer.get_instance(args)
         callbacks.append(ckpt)
 
-    lr_monitor = LearningRateMonitor(loggin_interval="epoch")
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
     callbacks.append(lr_monitor)
 
     # 初始化Trainer
@@ -131,9 +154,8 @@ def main():
         args,
         logger = logger,
         callbacks=callbacks,
-        plugins=DDPPlugin(find_unused_parameters=True),
-        terminate_on_nan=True,
-        accelerator="ddp",
+        strategy=DDPPlugin(find_unused_parameters=True),
+        detect_anomaly=True,
     )
 
     # 训练并验证
@@ -151,11 +173,18 @@ def main():
             trainer.fit(model, datamodule=dm, ckpt_path=args.checkpoints_dir + file_name)
         else:
             trainer.fit(model, datamodule=dm)
-    
+
     # 内部测试
     print("==> testing inside models")
     trainer.test(model, datamodule=dm)
 
+
     # 外部测试
     print("==> testing outside models")
     model.eval_compression_results(logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
+
+
+    logger.finalize(status='success')
+
+if __name__ == '__main__':
+    main()

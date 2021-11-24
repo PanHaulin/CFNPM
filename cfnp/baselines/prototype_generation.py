@@ -3,12 +3,15 @@ import pickle
 from argparse import ArgumentParser
 from collections import Counter
 from imblearn.under_sampling import ClusterCentroids
-from cfnp.baselines.base import ClassificationBaseline
+from cfnp.baselines.base import ClasscificationBaseline
 
-class PrototypeGeneration(ClassificationBaseline):
+class PrototypeGeneration(ClasscificationBaseline):
     @staticmethod
-    def add_method_specific_args(parent_parser: ArgumentParser):
-        parent_parser = super(PrototypeGeneration, PrototypeGeneration).add_model_specific_args(parent_parser)
+    def add_specific_args(parent_parser: ArgumentParser):
+        parent_parser = super(PrototypeGeneration, PrototypeGeneration).add_specific_args(parent_parser)
+        parser = parent_parser.add_argument_group('prototype_generation')
+        parser.add_argument("--prototype_generation_k_fold", type=int, default=3)
+        parser.add_argument("--prototype_generation_sampling_strategy", type=str, default='maintain', choices=['maintain', 'balance'])
         return parent_parser
 
     @staticmethod
@@ -28,11 +31,10 @@ class PrototypeGeneration(ClassificationBaseline):
         n_positive = label_distribution[1][1]
         n_compressed = int((1 - args.cmp_ratio) * (n_negative+ n_positive))
 
-        assert args.sampling_strategy in ['maintain', 'balance']
-        if args.sampling_strategy == 'maintain':
+        if args.prototype_generation_sampling_strategy == 'maintain':
             # 保持分布不变
-            n_negative_compressed = n_compressed * (n_negative / (n_negative + n_positive))
-            n_positive_compressed = n_compressed * (n_positive / (n_negative + n_positive))
+            n_negative_compressed = int(n_compressed * (n_negative / (n_negative + n_positive)))
+            n_positive_compressed = n_compressed - n_negative_compressed
         else:
             # 平衡样本数量
             if n_negative < int(0.5 * n_compressed):
@@ -49,14 +51,14 @@ class PrototypeGeneration(ClassificationBaseline):
             best_model = pickle.load(open(args.checkpoints_dir+'prototype_generation_model.pkl'))
         else:
             # 求k次平均
-            ramdom_states = np.random.randint(0, args.manual_seed, size=args.k_fold)
-            for i in range(args.k_fold):
+            ramdom_states = np.random.randint(0, args.manual_seed, size=args.prototype_generation_k_fold)
+            for i in range(args.prototype_generation_k_fold):
                 # compressed by prototype generation
                 cc = ClusterCentroids(sampling_strategy = {0:n_negative_compressed, 1:n_positive_compressed}, random_state=ramdom_states[i])
-                X_compressed, y_compressed = cc.fit(X_train, y_train)
+                X_compressed, y_compressed = cc.fit_resample(X_train, y_train)
 
                 # build model
-                model = MethodClass.build_np_models(args.__dict__)
+                model = MethodClass.build_np_model(**args.__dict__)
 
                 # train model
                 model.fit(X_compressed, y_compressed)
@@ -86,6 +88,12 @@ class PrototypeGeneration(ClassificationBaseline):
             model=best_model,
             data=(X_train, y_train, X_test, y_test),
         )
+
+        del best_model
+
+        print('Prototype Generation:')
+        print('best_acc_train: ',best_acc_train)
+        print('best_acc_test: ',best_acc_test)
 
         super(PrototypeGeneration, PrototypeGeneration).log(
             baseline_name='prototype_generation',

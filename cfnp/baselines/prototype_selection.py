@@ -4,11 +4,14 @@ import pickle
 from argparse import ArgumentParser
 from collections import Counter
 from imblearn.under_sampling import NearMiss
+from cfnp.baselines.base import ClasscificationBaseline
 
-class PrototypeSelection:
+class PrototypeSelection(ClasscificationBaseline):
     @staticmethod
-    def add_method_specific_args(parent_parser: ArgumentParser):
-        parent_parser = super(PrototypeSelection, PrototypeSelection).add_model_specific_args(parent_parser)
+    def add_specific_args(parent_parser: ArgumentParser):
+        parent_parser = super(PrototypeSelection, PrototypeSelection).add_specific_args(parent_parser)
+        parser = parent_parser.add_argument_group('prototype_selection')
+        parser.add_argument("--prototype_selection_sampling_strategy", type=str, default='maintain', choices=['maintain', 'balance'])
         return parent_parser
 
     @staticmethod
@@ -29,11 +32,10 @@ class PrototypeSelection:
         n_compressed = int((1 - args.cmp_ratio) * (n_negative+ n_positive))
 
         # 计算正负样本数
-        assert args.sampling_strategy in ['maintain', 'balance']
-        if args.sampling_strategy == 'maintain':
+        if args.prototype_selection_sampling_strategy == 'maintain':
             # 保持分布不变
-            n_negative_compressed = n_compressed * (n_negative / (n_negative + n_positive))
-            n_positive_compressed = n_compressed * (n_positive / (n_negative + n_positive))
+            n_negative_compressed = int(n_compressed * (n_negative / (n_negative + n_positive)))
+            n_positive_compressed = n_compressed - n_negative_compressed
         else:
             # 平衡样本数量
             if n_negative < int(0.5 * n_compressed):
@@ -53,10 +55,10 @@ class PrototypeSelection:
             for i in range(1,3):
                 # compressed by prototype selection
                 cc = NearMiss(sampling_strategy = {0:n_negative_compressed, 1:n_positive_compressed}, version=i)
-                X_compressed, y_compressed = cc.fit(X_train, y_train)
+                X_compressed, y_compressed = cc.fit_resample(X_train, y_train)
 
                 # build model
-                model = MethodClass.build_np_models(args.__dict__)
+                model = MethodClass.build_np_model(**args.__dict__)
 
                 # train model
                 model.fit(X_compressed, y_compressed)
@@ -87,6 +89,12 @@ class PrototypeSelection:
             model=best_model,
             data=(X_train, y_train, X_test, y_test),
         )
+
+        del best_model
+
+        print('Prototype Selection:')
+        print('best_acc_train: ',best_acc_train)
+        print('best_acc_test: ',best_acc_test)
 
         super(PrototypeSelection, PrototypeSelection).log(
             baseline_name='prototype_selection',

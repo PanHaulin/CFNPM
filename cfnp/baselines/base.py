@@ -6,10 +6,10 @@ from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_er
 
 class ClasscificationBaseline():
     @staticmethod
-    def add_method_specific_args(parent_parser: ArgumentParser):
-        parser = parent_parser.add_argument_group('cls_baseline_base')
-        parser.add_argument("--k_fold", type=int, default=5)
-        parser.add_argument("--sampling_strategy", type=str, default='maintain')
+    def add_specific_args(parent_parser: ArgumentParser):
+        # parser = parent_parser.add_argument_group('cls_baseline_base')
+        # parser.add_argument("--base_k_fold", type=int, default=5)
+        # parser.add_argument("--base_sampling_strategy", type=str, default='maintain')
         return parent_parser
     
     @staticmethod
@@ -39,9 +39,9 @@ class ClasscificationBaseline():
 
 class RegressionBaseline():
     @staticmethod
-    def add_method_specific_args(parent_parser: ArgumentParser):
-        parser = parent_parser.add_argument_group('cls_baseline_base')
-        parser.add_argument("--k_fold", type=int, default=5)
+    def add_specific_args(parent_parser: ArgumentParser):
+        # parser = parent_parser.add_argument_group('cls_baseline_base')
+        # parser.add_argument("--base_k_fold", type=int, default=5)
         return parent_parser
 
     @staticmethod

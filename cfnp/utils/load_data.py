@@ -21,16 +21,16 @@ def load_data(data_source, dataset_name):
 def _load_libsvm_dataset(dataset_name, test_size=0.3):
 
     if dataset_name in BINARYCLASS_DATASETS:
-        train_path = 'data/datasets/libsvm/binary/' + dataset_name
-        test_path = 'data/datasets/libsvm/binary/' + dataset_name + '.t'
+        train_path = 'datasets/libsvm/binary/' + dataset_name
+        test_path = 'datasets/libsvm/binary/' + dataset_name + '.t'
         n_features = BINARYCLASS_DATASETS[dataset_name]['n_features']
     elif dataset_name in MULTICLASS_DATASETS:
-        train_path = 'data/datasets/libsvm/multiple/' + dataset_name
-        test_path = 'data/datasets/libsvm/multiple/' + dataset_name + '.t'
+        train_path = 'datasets/libsvm/multiple/' + dataset_name
+        test_path = 'datasets/libsvm/multiple/' + dataset_name + '.t'
         n_features = MULTICLASS_DATASETS[dataset_name]['n_features']
     elif dataset_name in REGRESSION_DATASETS:
-        train_path = 'data/datasets/libsvm/regression/' + dataset_name
-        test_path = 'data/datasets/libsvm/regression/' + dataset_name +'.t'
+        train_path = 'datasets/libsvm/regression/' + dataset_name
+        test_path = 'datasets/libsvm/regression/' + dataset_name +'.t'
         n_features = REGRESSION_DATASETS[dataset_name]['n_features']
     else:
         assert False, f"Can not find {dataset_name} in BINARYCLASS_DATASETS, MULTICLASS_DATASETS and REGRESSION"
@@ -62,7 +62,7 @@ def _load_libsvm_dataset(dataset_name, test_size=0.3):
     print('<<<< Load dataset {}'.format(dataset_name))
     print('time used {:.2f}'.format(load_time))
     print('n_features:{}'.format(n_features))
-    print('numbers, Train:{}, Test:{}'.format(X_train.shape[0],X_test.shape[0]))
+    print('numbers:\n Train:{}, Test:{}'.format(X_train.shape[0],X_test.shape[0]))
     if dataset_name in {**BINARYCLASS_DATASETS, **MULTICLASS_DATASETS}:
         print('distribution:')
         print('trainset - {}'.format(sorted(Counter(y_train).items())))

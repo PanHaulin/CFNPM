@@ -1,13 +1,15 @@
-from cfnp.modules.conv import ConvCompressionModule
+from cfnp.modules.conv import ResCompressionNet
 from cfnp.modules.gumble import GumbleCompressionModule
 
 
 MODULES= {
-    'conv': ConvCompressionModule,
+    'resnet18': ResCompressionNet,
+    'resnet34': ResCompressionNet,
+    'resnet50': ResCompressionNet,
     'gumble': GumbleCompressionModule,
 }
 
 __all__ = [
-    'ConvCOmpressionModule',
-    'GumbleCOmpressionMOdule',
+    'ResCompressionNet',
+    'GumbleCompressionModule',
 ]

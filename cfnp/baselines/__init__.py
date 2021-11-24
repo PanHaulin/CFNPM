@@ -1,6 +1,6 @@
 from cfnp.baselines.prototype_generation import PrototypeGeneration
 from cfnp.baselines.prototype_selection import PrototypeSelection
-from cfnp.baselines.stratifie_sampling import StratifiedSampling
+from cfnp.baselines.stratified_sampling import StratifiedSampling
 
 DATASET_BASED_BASELINES_FOR_CLASSIFICATION = {
     'prototype_generation': PrototypeGeneration,

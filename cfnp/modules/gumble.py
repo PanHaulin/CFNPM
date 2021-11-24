@@ -1,3 +1,3 @@
 import torch.nn as nn
-class GumbleCompressionMoudle(nn.Module):
+class GumbleCompressionModule(nn.Module):
     pass

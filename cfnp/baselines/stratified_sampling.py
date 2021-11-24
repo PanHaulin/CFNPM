@@ -4,18 +4,20 @@ from argparse import ArgumentParser
 import pickle
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.model_selection import StratifiedShuffleSplit
+from cfnp.baselines.base import RegressionBaseline
 
 
-class StratifiedSampling():
+class StratifiedSampling(RegressionBaseline):
     @staticmethod
-    def add_method_specific_args(parent_parser: ArgumentParser):
-        parent_parser = super(StratifiedSampling, StratifiedSampling).add_model_specific_args(parent_parser)
+    def add_specific_args(parent_parser: ArgumentParser):
+        parent_parser = super(StratifiedSampling, StratifiedSampling).add_specific_args(parent_parser)
         parser = parent_parser.add_argument_group('stratified_sampling')
         
         # specific
-        parser.add_argument("--sampling_n_bins", type=int, default=5)
-        parser.add_argument("--sampling_encode", type=str, default='ordinal')
-        parser.add_argument("--sampling_strategy", type=str, default='quantile')
+        parser.add_argument("--stratified_sampling_k_fold", type=int, default=5)
+        parser.add_argument("--stratified_sampling_n_bins", type=int, default=5)
+        parser.add_argument("--stratified_sampling_encode", type=str, default='ordinal', choices=['ordinal'])
+        parser.add_argument("--stratified_sampling_sampling_strategy", type=str, default='quantile', choices=['quantile'])
         return parent_parser
 
     @staticmethod
@@ -37,20 +39,18 @@ class StratifiedSampling():
         else:
             
             # 数据分箱
-            assert args.sampling_encode in ['ordinal']
-            assert args.sampling_strategy in ['quantile']
-            kb = KBinsDiscretizer(n_bins=args.sampling_n_bins, encode=args.sampling_encode, strategy=args.sampling_strategy)
+            kb = KBinsDiscretizer(n_bins=args.stratified_sampling_n_bins, encode=args.stratified_sampling_encode, strategy=args.stratified_sampling_sampling_strategy)
             y_bin = kb.fit_transform(y_train.reshape(-1,1))
             Xy_train = np.concatenate((X_train, y_train.reshape(-1,1)), axis=1)
             # 求k次平均
-            skf = StratifiedShuffleSplit(n_splits=args.k_fold, test_size=args.cmp_ratio, random_state=args.manual_seed)
+            skf = StratifiedShuffleSplit(n_splits=args.stratified_sampling_k_fold, test_size=args.cmp_ratio, random_state=args.manual_seed)
             for train_idx, _ in skf.split(Xy_train, y_bin):
                 # compressed by stratified sampling
                 X_compressed = Xy_train[train_idx][:,:-1]
                 y_compressed = Xy_train[train_idx][:,-1]
 
                 # build model
-                model = MethodClass.build_np_models(args.__dict__)
+                model = MethodClass.build_np_model(**args.__dict__)
 
                 # train model
                 model.fit(X_compressed, y_compressed)
@@ -84,6 +84,14 @@ class StratifiedSampling():
             model=best_model,
             data=(X_train, y_train, X_test, y_test)
         )
+
+        del best_model
+
+        print('Stratified Sampling:')
+        print('best_mae_train: ',best_mae_train)
+        print('best_mae_test: ',best_mae_test)
+        print('best_mse_train: ',best_mse_train)
+        print('best_mse_test: ',best_mse_test)
 
         super(StratifiedSampling, StratifiedSampling).log(
             baseline_name='stratified_sampling',
