@@ -16,6 +16,7 @@ from cuml.svm import SVC
 from torchmetrics.functional import accuracy
 from hyperopt import hp, STATUS_OK, fmin, tpe
 from hyperopt.fmin import generate_trials_to_calculate
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 
 def create_svc_class(base):
@@ -67,6 +68,15 @@ def create_svc_class(base):
             return compressed_X_fit, compressed_coef_fit, compressed_intercept_fit
 
             # return {'X_fit':compressed_X_fit, 'coef':compressed_coef_fit, 'intercept':compressed_intercept_fit}
+
+        @property
+        def learnable_params(self) -> List[Dict[str, Any]]:
+            extra_learnable_params =[
+                {"name":"fx_layer", "params": self.fx_layer.parameters()}
+            ]
+
+            return super().learnable_params + extra_learnable_params
+
 
         def _shared_step(self, X, y, stage=None):
 
