@@ -258,7 +258,7 @@ def create_svc_class(base):
             return pred_train_params, pred_test_params, acc_train_params, acc_test_params
 
         def eval_compression_results(self, logger, data, args):
-            # !Warning: outside和inside得到的准确率不一致，不是kernel的问题,可能是batch的问题
+            # !Warning: outside和inside得到的准确率不一致，不是kernel的问题,是batch的问题
             compressed_X_fit, compressed_coef_fit, compressed_intercept_fit = self.get_compression_results()
             _, _, acc_train_params, acc_test_params = CompressionForSVC.eval_params(
                 data, args, compressed_X_fit, compressed_coef_fit, compressed_intercept_fit)

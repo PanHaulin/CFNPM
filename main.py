@@ -137,7 +137,12 @@ def main():
     callbacks = []
 
     # early stopping callback
-
+    early_stopping = EarlyStopping(
+        monitor='pl_valid_acc',
+        patience=args.patience,
+        mode='max',
+        strict=True,
+    )
 
     # checkpoint save callback
     if not args.fast_dev_run:

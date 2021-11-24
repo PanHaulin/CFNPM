@@ -17,6 +17,7 @@ python ./main.py   \
     --logger_project_name "cfnp/svc" \
     --logger_run_name base_svc_rbf_ratio=0.9 \
     --logger_description "run pipelines, base model=base, method=svc, kernel=linear, cmp_ratio=0.9" \
+    --patience 10 \
     --max_epochs 100 \
     --num_sanity_val_steps 0 \
     --optimizer adam \
