@@ -70,6 +70,7 @@ Experimental records showed in **Neptune**: https://app.neptune.ai/o/cfnp/-/peop
 Experimental results showed in **yuque**: https://www.yuque.com/zaisanxuzhongshi/yu74o2
 
 ## Files Organization
+```
 .
 ├── datasets
 ├── checkpoints
@@ -119,4 +120,5 @@ Experimental results showed in **yuque**: https://www.yuque.com/zaisanxuzhongshi
 ├── requirements.txt
 ├── env.yaml
 └── README.md
+```
 
