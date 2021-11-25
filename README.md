@@ -11,14 +11,14 @@ This repository is focus on Model Compression for Non-parametric Models using de
 - [ ] add other baselines
 
 ## Available Components
-- [x] CNN-based compression <font color=#1ABC9C>Tested</font>
+- [x] CNN-based compression <font color=#1ABC9C>- Tested</font>
 - [ ] Gumble-softmax-based compression
-- [x] Class-seperated input <font color=#E74C3C>Untested</font>
-- [x] Instance-added output <font color=#E74C3C>Untested</font> 
+- [x] Class-seperated input <font color=#E74C3C>- Untested</font>
+- [x] Instance-added output <font color=#E74C3C>- Untested</font> 
 
 ## Available Methods
-- [x] Support Vector Classification(SVC) <font color=#1ABC9C>Tested</font>
-- [x] Support Vector Regression(SVR) <font color=#E74C3C>Untested</font>
+- [x] Support Vector Classification(SVC) <font color=#1ABC9C>- Tested</font>
+- [x] Support Vector Regression(SVR) <font color=#E74C3C>- Untested</font>
 - [ ] Kernel Logistic Regression(KLR)
 - [ ] Kernel Ridge Regression(KRR)
 - [ ] Gaussian Process Regression(GP)
@@ -26,15 +26,15 @@ This repository is focus on Model Compression for Non-parametric Models using de
 - [ ] K-NearestNeighbor Regression(KNR)
 
 ## Available Dataset-based Baselines
-- [x] Prototype Generation <font color=#1ABC9C>Tested</font>
-- [x] Prototype Selection <font color=#1ABC9C>Tested</font>
-- [x] Stratified Sampling <font color=#E74C3C>Untested</font>
+- [x] Prototype Generation <font color=#1ABC9C>- Tested</font>
+- [x] Prototype Selection <font color=#1ABC9C>- Tested</font>
+- [x] Stratified Sampling <font color=#E74C3C>- Untested</font>
 
 ## Available Methode-based Basedlines
 - [] SVC: NSSVM
 
 ## Available Workflow
-- [x] main <font color=#1ABC9C>Tested</font>
+- [x] main <font color=#1ABC9C>- Tested</font>
 - [] train original model only
 - [] train baseline only
 - [] do compression only
