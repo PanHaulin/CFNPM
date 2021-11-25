@@ -1,9 +1,7 @@
 This repository is focus on Model Compression for Non-parametric Models using deep learning.
-
-## Files Organization
-
-
 ## TODO
+- [ ] memory limitation about kernel metrics or datasets
+- [ ] add some large datasets
 - [ ] saving the params of original model
 - [ ] completing gumble-softmax component
 - [ ] completing all available methods
@@ -31,17 +29,16 @@ This repository is focus on Model Compression for Non-parametric Models using de
 - [x] Stratified Sampling <font color=#E74C3C>- Untested</font>
 
 ## Available Methode-based Basedlines
-- [] SVC: NSSVM
+- [ ] SVC: NSSVM
 
 ## Available Workflow
 - [x] main <font color=#1ABC9C>- Tested</font>
-- [] train original model only
-- [] train baseline only
-- [] do compression only
-- [] test compression results only
+- [ ] train original model only
+- [ ] train baseline only
+- [ ] do compression only
+- [ ] test compression results only
 
 ## Setup: New a conda env and install required packages
-
 ```
 pip install -r requirements.txt
 conda env create -f env.yaml
@@ -71,4 +68,55 @@ Waiting...
 Experimental records showed in **Neptune**: https://app.neptune.ai/o/cfnp/-/people
 
 Experimental results showed in **yuque**: https://www.yuque.com/zaisanxuzhongshi/yu74o2
+
+## Files Organization
+.
+├── datasets
+├── checkpoints
+├── temp
+├── bash_files
+│   └── svc.sh
+│
+├── cfnp
+│   ├── args
+│   │   ├── dataset.py
+│   │   └── setup.py
+│   ├── baselines
+│   │   ├── base.py
+│   │   ├── prototype_generation.py
+│   │   ├── prototype_selection.py
+│   │   └── stratified_sampling.py
+│   │   
+│   ├── methods
+│   │   ├── base.py
+│   │   ├── gp.py
+│   │   ├── klr.py
+│   │   ├── knn.py
+│   │   ├── knr.py
+│   │   ├── krr.py
+│   │   ├── svc.py
+│   │   └── svr.py
+│   │   
+│   ├── modules
+│   │   ├── conv.py
+│   │   └── gumble.py
+│   │   
+│   ├── utils
+│   │   ├── checkpointer.py
+│   │   ├── dm_factory.py
+│   │   ├── gen_nssvm_data.py
+│   │   ├── helper.py
+│   │   ├── km.py
+│   │   └── load_data.py
+│   │   
+│   └── workflows
+│       ├── train_basline.py
+│       ├── train_np_models.py
+│       └── train_ours.py
+│
+├── main.py
+├── test.py
+├── requirements.txt
+├── env.yaml
+└── README.md
 
