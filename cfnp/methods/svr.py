@@ -1,211 +1,317 @@
+from argparse import ArgumentParser
+from datetime import datetime
+import os
+from pathlib import Path
+from typing import Tuple
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import torch.nn.functional as F
 import warnings
-from methods.base import RegressionBaseModel
+import pickle
+# from sklearn.metrics import accuracy_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error as mae_score, mse_score
+from cfnp.utils.km import get_cal_km_func_numpy, get_cal_km_func_torch
+import numpy as np
+from cuml.svm import SVR
+from torchmetrics.functional import mean_absolute_error, mean_squared_error
+from hyperopt import hp, STATUS_OK, fmin, tpe
+from hyperopt.fmin import generate_trials_to_calculate
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
-class CompressionNetForSVR(RegressionBaseModel):
-    def __init__(self, conv_module, X_fit, coef_fit, intercept, n_compressed, params, cfg_optimizer, model_type, ratio, data):
-        super().__init__()
+
+def create_svr_class(base):
+    '''
+    动态继承父类
+    '''
+
+    class CompressionForSVR(base):
+        def __init__(self, coef_fit, intercept_fit, **kwargs):
+            super().__init__(coef_fit=coef_fit, **kwargs)
+
+            # weights(n_compressed, 1), bias(1,)
+            self.fx_layer = nn.Linear(self.n_compressed, 1, bias=True)
+
+            # 用coef_fit和intercept初始化
+            self.fx_layer.weight = nn.Parameter(torch.Tensor(
+                (coef_fit.reshape(-1, 1))[:self.n_compressed].reshape(1, -1)))
+            self.fx_layer.bias = nn.Parameter(torch.Tensor([intercept_fit]))
+
+            # cal km func
+            self.cal_km = get_cal_km_func_torch(**self.extra_kwargs)
+
+            # criterion
+            self.criterion = nn.SmoothL1Loss()
+
+            # 预测用信息
+            # self.data = data
+
+        def get_constrained_coef(self):
+            alpha = F.softmax(torch.abs(self.fx_layer.weight), dim=-1)  # 行处理, (1, n_compressed)
+            # (1, n_compressed)
+            coef = alpha * torch.sign(self.fx_layer.weight)
+            return coef
+
+        def cal_fx(self, km):
+            coef = self.get_constrained_coef()
+            fx = torch.mm(km, coef.T) + self.fx_layer.bias  # (batch_size, 1)
+            return fx
+            
+        def get_compression_results(self) -> Tuple[np.array, np.array, np.array]:
+            compressed_X_fit = super().forward().cpu().detach().numpy()
+            compressed_coef_fit = self.get_constrained_coef().data.cpu().detach().numpy()
+            compressed_intercept_fit = self.fx_layer.bias.data.cpu().detach().numpy()[0]
+
+            return compressed_X_fit, compressed_coef_fit, compressed_intercept_fit
+
+            # return {'X_fit':compressed_X_fit, 'coef':compressed_coef_fit, 'intercept':compressed_intercept_fit}
+
+        @property
+        def learnable_params(self) -> List[Dict[str, Any]]:
+            extra_learnable_params =[
+                {"name":"fx_layer", "params": self.fx_layer.parameters()}
+            ]
+
+            return super().learnable_params + extra_learnable_params
+
+
+        def _shared_step(self, X, y, stage=None):
+
+            # compressing
+            compressed_X_fit = super().forward()
+
+            # cal km
+            km = self.cal_km(compressed_X_fit, X) # shape: (n_compressed, batch_size)
+
+            # cal fx
+            # 由于linear.weight是(1,n_compressed)，计算xA^T + b，因此km要转置
+            # fx的维度为(batch_size, n_compressed) @ (n_compressed, 1) = (batch_size , 1)
+            fx = self.cal_fx(km.T)
+            del km
+
+            # cal loss
+            fx = fx.view(-1,)
+            loss = self.criterion(fx, y)
+
+            # cal mae, mse
+            mae = mean_absolute_error(fx, y)
+            mse = mean_squared_error(fx, y)
+
+            if stage:
+                self.log(f'pl_{stage}_loss', loss, prog_bar=True)
+                self.log(f'pl_{stage}_mae', mae, prog_bar=True)
+                self.log(f'pl_{stage}_mse', mse, prog_bar=True)
+            
+            return loss
+
+        def training_step(self, batch, batch_idx):
+
+            X, y = batch
+            loss = self._shared_step(X, y, 'train')
+            return loss
+
+        def validation_step(self, batch, batch_idx):
+            X, y = batch
+            self._shared_step(X, y, 'valid')
         
-        self.conv = conv_module
-        self.fx_linear = nn.Linear(n_compressed, 1, bias=True) # weights(n_compressed, 1), bias(1,)
-        # self.sigmoid = nn.Sigmoid()
-        # initial fx_linear, the weights is compressed_coef, the bia is intercept
-        # 用coef_fit和intercept初始化
-        self.fx_linear.weight = nn.Parameter(torch.Tensor((coef_fit.reshape(-1,1))[:n_compressed].reshape(1,-1)))
-        self.fx_linear.bias = nn.Parameter(torch.Tensor([intercept]))
-        # self.fx_linear.weight = nn.Parameter(torch.rand(1,n_compressed))
-        # self.fx_linear.bias = nn.Parameter(torch.Tensor([1]))
-        # self.compressed_X_fit = nn.Parameter(torch.rand(n_compressed,123))
-        #TODO:修改成有约束形式
-        # 用xavier正态分布初始化
-        # nn.init.xavier_uniform(self.fx_linear.weight)
-        # nn.init.xavier_uniform(self.fx_linear.bias)
-        self.register_buffer('X_fit', X_fit)
+        def test_step(self, batch, batch_idx):
+            X, y = batch
+            self._shared_step(X, y, 'test')
 
-        self.cfg_optimizer = cfg_optimizer
-        self.params = params
-        # init criterion
-        if model_type == 'svc':
-            self.criterion = nn.BCEWithLogitsLoss()
-        else:
-            self.criterion = nn.L1Loss()
+        @staticmethod
+        def add_specific_args(parent_parser: ArgumentParser):
+            parent_parser = super(
+                CompressionForSVR, CompressionForSVR).add_specific_args(parent_parser)
+            parser = parent_parser.add_argument_group('svr')
 
-        self.grads = {}
-        self.monitor_grad = False
-        self.check = False
+            # specific
+            parser.add_argument("--kernel", type=str, required=True)
+            parser.add_argument("--C", type=float, default=1.0)
+            parser.add_argument("--gamma", type=float, default=None)
+            parser.add_argument("--coef0", type=float, default=0.0)
+            parser.add_argument("--degree", type=int, default=3)
 
-        # 统计信息
-        self.n_epochs=0
-        self.n_fit = X_fit.size(2)
-        self.n_compressed = n_compressed
-        self.n_features = X_fit.size(1) + 1 # n_features + coef
-        self.ratio = ratio
+            return parent_parser
 
-        # 预测用信息
-        self.X_train = data['X_train']
-        self.X_test = data['X_test']
-        self.y_train = data['y_train']
-        self.y_test = data['y_test']
-        self.model_type = model_type
+        # 以下函数为svc独有的外部调用函数
+        @staticmethod
+        def build_np_model(**kwargs):
+            return SVR(kernel=kwargs['kernel'], C=kwargs['C'], gamma=kwargs['gamma'], coef0=kwargs['coef0'], degree=kwargs['degree'])
 
-    def constrained_linear_fx(self, km):
-        if self.check:
-            print('km:{}'.format(km.size())) # (batch_size, n_compressed)
-        alpha = F.softmax(torch.abs(self.fx_linear.weight), dim=0) #行处理
-        if self.check:
-            print("alpha:{}".format(alpha.size())) # (1, n_compressed)
-        coef = alpha * torch.sign(self.fx_linear.weight)
-        if self.check:
-            print('coef:{}'.format(coef.size())) # (1, n_compressed)
-        fx = torch.mm(km, coef.T) + self.fx_linear.bias
-        if self.check:
-            print('fx:{}'.format(fx.size())) # (batch_size, 1)
-            self.check=False
-        
-        return fx
+        @staticmethod
+        def train_original_model(logger, data, args):
 
-    def get_coef(self):
-        alpha = F.softmax(torch.abs(self.fx_linear.weight), dim=0)
-        coef = alpha * torch.sign(self.fx_linear.weight)
-        return coef
+            X_train, y_train, X_test, y_test = data
 
-    def get_compression_results(self):
-        # return compressed_X_fit, compressed_coef, intercept
-        compressed_X_fit = (self.conv(self.X_fit)).cpu().detach().numpy()
-        # compressed_X_fit = self.compressed_X_fit.cpu().detach().numpy()
-        # compressed_coef = self.fx_linear.weight.data.cpu().detach().numpy()
-        compressed_coef = self.get_coef().data.cpu().detach().numpy()
-        compressed_intercept = self.fx_linear.bias.data.cpu().detach().numpy()
-        results = {'compressed_X_fit':compressed_X_fit, 'compressed_coef':compressed_coef, 'compressed_intercept':compressed_intercept[0]}
-        return results
+            # 生成存储路径
+            time_tick = datetime.now().strftime('%y%m%D%H%M%S')
+            args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
+                args.kernel, logger.version, args.logger_run_name, time_tick)
 
-    def training_step(self, batch, batch_idx): 
-        gc.collect()
-        X, y = batch
-        # if self.monitor_grad:
-        #     print('X',X.requires_grad)
-        compressed_X_fit = self.conv(self.X_fit)
-        # compressed_X_fit = self.compressed_X_fit
-        # if self.monitor_grad:
-        #     print('x fit:',compressed_X_fit.requires_grad)
-        km = self.cal_km(compressed_X_fit, X) # shape: (n_compressed, batch_size)
-        # if self.monitor_grad:
-        #     print('km:',km.requires_grad)
-        # 由于linear.weight是(1,n_compressed)，计算xA^T + b，因此km要转置
-        # (batch_size, n_compressed) @ (n_compressed, 1) = (batch_size , 1) 即fx 
-        # fx = self.fx_linear(km.T)
-        fx = self.constrained_linear_fx(km.T)
-        # if self.monitor_grad:
-        #     print('fx:',fx.requires_grad)
-        #     self.monitor_grad=False
-        fx = fx.view(-1,)
-        # loss = F.binary_cross_entropy_with_logits(fx, y)
-        loss = self.criterion(fx, y)
-        self.log('train_loss', loss)
-        del km
-        gc.collect()
+            if Path(args.checkpoints_dir).is_dir():
+                if args.resume:
+                    # 目录存在且指定重用
+                    print('>> Load exist orignal model')
+                    model = pickle.load(
+                        open(args.checkpoints_dir+'original_model.pkl'))
+            else:
+                # 指定的目录不存在
+                if args.resume:
+                    assert False, f'Can not resume from non-existent dir {args.checkpoints_dir}'
+                print('>> Path {} does not exist, create'.format(
+                    args.checkpoints_dir))
+                os.makedirs(args.checkpoints_dir, exist_ok=True)
 
-        # register hook
-        # if self.monitor_grad:
-        #     compressed_X_fit.register_hook(save_grad('compressed_X_fit',self.grads))
-        #     fx.register_hook(save_grad('fx',self.grads))
-        #     loss.register_hook(save_grad('loss',self.grads))
+                # 需要训练原模型
+                # 设置默认值
+                n_features = X_train.shape[0]
 
-        return loss
+                if args.gamma is None:
+                    args.gamma = 1 / (n_features * X_train.var())
 
-    def validation_step(self, batch, batch_idx):
-        gc.collect()
-        X, y = batch
-        compressed_X_fit = self.conv(self.X_fit)
-        # compressed_X_fit = self.compressed_X_fit
-        km = self.cal_km(compressed_X_fit, X) # shape: (n_compressed, batch_size)
-        # 由于linear.weight是(1,n_compressed)，计算xA^T + b，因此km要转置
-        # (batch_size, n_gen) @ (n_gen, 1) = (batch_size , 1) 即fx 
-        # fx = self.fx_linear(km.T)
-        fx = self.constrained_linear_fx(km.T)
-        fx = fx.view(-1,)
+                # 设置搜索空间
+                space = {
+                    'C': hp.uniform('C', 0.1, 100),
+                    'gamma': hp.uniform('gamma', 1e-3, 1)
+                }
 
-        # loss = F.binary_cross_entropy_with_logits(fx, y)
-        loss = self.criterion(fx, y)
-        self.log('valid_loss', loss)
-        del km
-        gc.collect()
+                # 参数自动调优
+                print('>> hyper-params optimization')
 
-    def configure_optimizers(self):
-        if self.cfg_optimizer.NAME.lower() == 'adam':
-            return torch.optim.Adam(self.parameters(), lr=self.cfg_optimizer.BASE_LR, betas=(0.9, 0.999), eps=1e-08)
-        else:
-            warnings.warn('(compression_net.py) unknown optim name, adam will be used')
-            return torch.optim.Adam(self.parameters(), lr=self.cfg_optimizer.BASE_LR, betas=(0.9, 0.999), eps=1e-08)
+                def f(params):
+                    model = CompressionForSVR.build_np_model(
+                        kernel=args.kernel, C=params['C'], gamma=params['gamma'], coef0=args.coef0, degree=args.degree)
+                    model.fit(X_train, y_train)
+                    pred_test = model.predict(X_test)
+                    loss = F.smooth_l1_loss(torch.Tensor(y_test), torch.Tensor(pred_test)).item() # 取出0-dim Tensor中的值
+                    return {'loss': loss, 'status': STATUS_OK}
 
-    # def count(self, X, y):
-    #     compressed_X_fit = self.conv(self.X_fit)
-    #     # compressed_X_fit = self.compressed_X_fit
-    #     km = self.cal_km(compressed_X_fit, X) # shape: (n_compressed, batch_size)
-    #     # 由于linear.weight是(1,n_compressed)，计算xA^T + b，因此km要转置
-    #     # (batch_size, n_gen) @ (n_gen, 1) = (batch_size , 1) 即fx 
-    #     # fx = self.fx_linear(km.T)
-    #     fx = self.constrained_linear_fx(km.T)
-    #     fx = fx.view(-1,)
-    #     # loss = F.binary_cross_entropy_with_logits(fx, y)
-    #     loss = self.criterion(fx, y)
+                trials = generate_trials_to_calculate(
+                    [{'C': args.C, 'gamma': args.gamma}])
+                best_params = fmin(f, space, algo=tpe.suggest,
+                                   max_evals=args.max_evals, trials=trials)
+                args.C = best_params['C']
+                args.gamma = best_params['gamma']
 
-    def cal_km(self, X_fit, X):
-        if self.params['kernel'] == 'linear':
-            return torch.mm(X_fit, X.t())
-        elif self.params['kernel'] == 'rbf':
-            # X_a = X.view(-1, 1, X.size(1))
-            # km = torch.exp(-self.params['gamma'] * torch.sum(torch.pow(X_fit - X_a, 2), axis=2))
-            km = torch.exp(-self.params['gamma'] * torch.cdist(X_fit, X, p=2)**2)
-            return km #.t()
-            # km = torch.Tensor(X_fit.size(0), X.size(0))
-            # km.type_as(X_fit)
-            # for i in range(X_fit.size(0)):
-            #     for j in range(X.size(0)):
-            #         km[i][j] = torch.exp(-self.params['gamma']*torch.sum(torch.pow(X_fit[i]-X[j], 2)))
-            # return km.cuda()
-        elif self.params['kernel'] == 'poly':
-            return torch.pow(self.params['gamma'] * torch.mm(X_fit, X.t()) + self.params['coef0'], self.params['degree'])
-        elif self.params['kernel'] == 'sigmoid':
-            return torch.tanh(self.params['gamma'] * torch.mm(X_fit, X.t()) + self.params['coef0'])
-        else:
-            warnings.warn('(compression_net.py) unknown kernel, can not do cal_km function')
-            return
+                # 使用最优参数重新训练模型
+                print('>> retrain original model using best params')
+                model = CompressionForSVR.build_np_model(
+                    kernel=args.kernel, C=args.C, gamma=args.gamma, coef0=args.coef0, degree=args.degree)
+                model.fit(X_train, y_train)
 
-    def on_train_epoch_start(self):   
-        start = time.time()
-        compression_results = self.get_compression_results()
-        # log_compressed_info
-        eval_results = eval_compression_ins(self.X_train, self.X_test, self.y_train, self.y_test, self.model_type, compression_results, self.params)
-        if self.model_type == 'svc':
-            self.log('train_acc', eval_results['trainset_report_dict']['acc'], on_epoch=True)
-            self.log('train_auc', eval_results['trainset_report_dict']['auc'], on_epoch=True)
-            self.log('test_acc', eval_results['testset_report_dict']['acc'], on_epoch=True)
-            self.log('test_auc', eval_results['testset_report_dict']['auc'], on_epoch=True)
-        else:
-            self.log('train_mae', eval_results['trainset_report_dict']['mae'], on_epoch=True)
-            self.log('train_mse', eval_results['trainset_report_dict']['mse'], on_epoch=True)
-            self.log('test_mae', eval_results['testset_report_dict']['mae'], on_epoch=True)
-            self.log('test_mse', eval_results['testset_report_dict']['mse'], on_epoch=True)
-        end = time.time()
-        self.log('eval_time', end-start, on_epoch=True)
-        
-    def on_train_end(self):
-        # if self.n_epochs == self.max_epochs:
-        #     # print('max_epochs')
-        # log eval
-        self.on_train_start()
+                # 保存模型
+                pickle.dump(model, open(args.checkpoints_dir +
+                            'original_model.pkl', "wb"))
 
-        # log ratio
-        self.logger.log_metric('ac_ratio', 1- (self.n_compressed / self.n_fit))
+            # 获取预测相关参数
+            original_params = {
+                # 'config': model.get_params(),
+                'support_idx': model.support_,
+                'coef_fit': model.dual_coef_[0],
+                'intercept_fit': model.intercept_
+            }
 
-        # log n_ins
-        self.logger.log_metrics({'bf_n_ins':self.n_fit, 'af_n_ins':self.n_compressed})
+            # inference by rapids
+            print('>> get best svr predictition by rapids ')
+            pred_train_rapids = model.predict(X_train)
+            pred_test_rapids = model.predict(X_test)
+            mae_train_rapids = mae_score(y_train, pred_train_rapids)
+            mse_train_rapids = mse_score(y_train, pred_train_rapids)
+            mae_test_rapids = mae_score(y_test, pred_test_rapids)
+            mse_test_rapids = mse_score(y_test, pred_test_rapids)
 
-        # log bytes
-        before_size = self.n_features * self.n_fit * 8 /1024
-        after_size = self.n_features * self.n_compressed * 8 / 1024
-        self.logger.log_metrics({'bf_size(MB)':before_size, 'af_size(MB)':after_size})
+            print('mae_train_rapids: ', mae_train_rapids)
+            print('mse_train_rapids: ', mse_train_rapids)
+            print('mae_test_rapids: ', mae_test_rapids)
+            print('mse_test_rapids: ', mse_test_rapids)
+
+
+            # inference by params
+            print('>> get best svc predictition by params ')
+            X_fit = X_train[original_params['support_idx']]
+
+            # 跳过外部预测，直接使用rapids预测结果，减少时间开销（必须保证二者结果相同）
+            # pred_train_params, _, mae_train_params, mse_train_params, mae_test_params, mse_test_params = CompressionForSVR.eval_params(
+            #     data, args, X_fit, original_params['coef_fit'], original_params['intercept_fit'])
+
+            pred_train_params = pred_train_rapids
+            mae_train_params = mae_train_rapids
+            mse_train_params = mse_train_rapids
+            mae_test_params = mae_test_rapids
+            mse_test_params = mse_test_rapids
+
+            print('mae_train_params: ', mae_train_params)
+            print('mse_train_params: ', mse_train_params)
+            print('mae_test_params: ', mae_test_params)
+            print('mse_test_params: ', mse_test_params)
+
+            # log, 需要保证rapids和params得到的结果是一致的
+            logger.log_metrics({
+                'original_mae_train_rapids': mae_train_rapids,
+                'original_mse_train_rapids': mse_train_rapids,
+                'original_mae_test_rapids': mae_test_rapids,
+                'original_mse_test_rapids': mse_test_rapids,
+                'original_mae_train_params': mae_train_params,
+                'original_mse_train_params': mse_train_params,
+                'original_mae_test_params': mae_test_params,
+                'original_mse_test_params': mse_test_params,
+            })
+
+            return X_fit, pred_train_params[original_params['support_idx']], original_params, args
+
+        @staticmethod
+        def predict_by_params(X, X_fit, coef, intercept, args):
+            cal_km = get_cal_km_func_numpy(**args.__dict__)
+            km = cal_km(X_fit, X)
+            fx = np.sum(km.T * coef, axis=1) + intercept
+            return fx
+
+        @staticmethod
+        def eval_params(data, args, X_fit, coef, intercept):
+            X_train, y_train, X_test, y_test = data
+
+            pred_train_params = CompressionForSVR.predict_by_params(
+                X_train, X_fit, coef, intercept, args)
+            pred_test_params = CompressionForSVR.predict_by_params(
+                X_test, X_fit, coef, intercept, args)
+            mae_train_params = mae_score(y_train, pred_train_params)
+            mse_train_params = mse_score(y_train, pred_train_params)
+            mae_test_params = mae_score(y_test, pred_test_params)
+            mse_test_params = mse_score(y_test, pred_test_params)
+
+            return pred_train_params, pred_test_params, mae_train_params, mse_train_params, mae_test_params, mse_test_params
+
+        def eval_compression_results(self, logger, data, args):
+            # !Warning: outside和inside得到的准确率不一致，不是kernel的问题,可能是batch的问题
+            compressed_X_fit, compressed_coef_fit, compressed_intercept_fit = self.get_compression_results()
+            _, _, mae_train_params, mse_train_params, mae_test_params, mse_test_params = CompressionForSVR.eval_params(
+                data, args, compressed_X_fit, compressed_coef_fit, compressed_intercept_fit)
+
+            print('compression_mae_train_params: ', mae_train_params)
+            print('compression_mse_train_params: ', mse_train_params)
+            print('compression_mae_test_params: ', mae_test_params)
+            print('compression_mse_test_params: ', mse_test_params)
+
+            # 验证 Tensor 和 np.array的计算是否一致
+            # X_train, y_train, X_test, y_test = data
+            # km = self.cal_km(torch.Tensor(compressed_X_fit),torch.Tensor(X_train))
+            # fx = self.cal_fx(km.T).view(-1,).detach().numpy()
+            # pred_train = fx
+            # acc_train = accuracy_score(y_train, pred_train)
+
+            # km = self.cal_km(torch.Tensor(compressed_X_fit),torch.Tensor(X_test))
+            # fx = self.cal_fx(km.T).view(-1,).detach().numpy()
+            # pred_test = fx
+            # acc_test = accuracy_score(y_test, pred_test)
+
+            # print('torch_acc_train_params',acc_train)
+            # print('torch_acc_test_params',acc_test)
+
+            logger.log_metrics({
+                'compression_mae_train_params': mae_train_params,
+                'compression_mse_train_params': mse_train_params,
+                'compression_mae_test_params': mae_test_params,
+                'compression_mse_test_params': mse_test_params,
+            })
+
+    return CompressionForSVR

@@ -52,7 +52,7 @@ class BaseModel(pl.LightningModule):
     
     @staticmethod
     def add_specific_args(parent_parser: ArgumentParser):
-        parser = parent_parser.add_argument_group('cls_base')
+        parser = parent_parser.add_argument_group('base')
 
         # general
         parser.add_argument("--batch_size", type=int, default=64)

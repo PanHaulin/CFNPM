@@ -42,8 +42,6 @@ def create_svc_class(base):
             # criterion
             self.criterion = nn.BCEWithLogitsLoss()
 
-            # 统计信息
-            self.n_epochs = 0
 
             # 预测用信息
             # self.data = data
@@ -221,8 +219,8 @@ def create_svc_class(base):
             pred_test_rapids = model.predict(X_test)
             acc_train_rapids = accuracy_score(y_train, pred_train_rapids)
             acc_test_rapids = accuracy_score(y_test, pred_test_rapids)
-            print('acc_train_rapids:',acc_train_rapids)
-            print('acc_test_rapids', acc_test_rapids)
+            print('acc_train_rapids: ',acc_train_rapids)
+            print('acc_test_rapids: ', acc_test_rapids)
 
             # inference by params
             print('>> get best svc predictition by params ')
@@ -233,8 +231,8 @@ def create_svc_class(base):
             pred_train_params = pred_train_rapids
             acc_train_params = acc_train_rapids
             acc_test_params = acc_test_rapids
-            print('acc_train_params:', acc_train_params)
-            print('acc_test_params:', acc_test_params)
+            print('acc_train_params: ', acc_train_params)
+            print('acc_test_params: ', acc_test_params)
 
             # log, 需要保证rapids和params得到的结果是一致的
             logger.log_metrics({
@@ -274,8 +272,8 @@ def create_svc_class(base):
             _, _, acc_train_params, acc_test_params = CompressionForSVC.eval_params(
                 data, args, compressed_X_fit, compressed_coef_fit, compressed_intercept_fit)
 
-            print('np_acc_train_params:', acc_train_params)
-            print('np_acc_test_params:', acc_test_params)
+            print('compression_acc_train_params: ', acc_train_params)
+            print('compression_acc_test_params: ', acc_test_params)
 
             # 验证 Tensor 和 np.array的计算是否一致
             # X_train, y_train, X_test, y_test = data

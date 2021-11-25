@@ -6,6 +6,7 @@ from cfnp.methods.base import BaseModel, ClassSeparationBaseModel, AddInstanceBa
 # from cfnp.methods.knr import CompressionNetForKNR
 # from cfnp.methods.krr import CompressionNetForKRR
 from cfnp.methods.svc import create_svc_class
+from cfnp.methods.svr import create_svr_class
 # from cfnp.methods.svr import CompressionNetForSVR
 
 BASES = {
@@ -21,7 +22,7 @@ METHODS = {
     # 'knr': CompressionNetForKNR,
     # 'krr': CompressionNetForKRR,
     'svc': create_svc_class,
-    # 'svr': CompressionNetForSVR
+    'svr': create_svr_class,
 }
 
 __all__ = [
@@ -31,5 +32,5 @@ __all__ = [
     # 'CompressionNetForKNR',
     # 'CompressionNetForKRR',
     'create_svc_class',
-    # 'CompressionNetForSVR'
+    'create_svr_class',
 ]

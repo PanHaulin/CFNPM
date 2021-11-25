@@ -93,3 +93,11 @@ print(test_tensor.size())
 test_tensor = test_tensor.view(1, test_tensor.size(1), test_tensor.size(0), 1)
 print((X_fit==test_tensor).all())
 # %%
+# 测试如何取出0-dim Tensor的值
+import torch
+import torch.nn.functional as F
+a = torch.rand(5, 1)
+b = torch.rand(5, 1)
+loss = F.smooth_l1_loss(a, b).item()
+print('loss value: {}, type: {}'.format(loss,type(loss)))
+# %%
