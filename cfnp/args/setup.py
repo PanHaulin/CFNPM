@@ -58,7 +58,7 @@ def parse_args_main():
             parser = baselines_dict[baseline_name].add_specific_args(parser)
 
     # callbacks
-    parser.add_argument('--patience', type=int, default=10)
+    parser.add_argument('--patience', type=int, default=None)
 
     # evaluate
     parser.add_argument('--evaluate', action='store_true')

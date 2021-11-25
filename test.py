@@ -85,7 +85,7 @@ print('n_positive:{}, n_negative:{}'.format(n_positive, n_nagative))
 test_tensor = torch.Tensor(compressed_X_fit)
 positive_tensor = test_tensor[coef_sign>0]
 negative_tensor = test_tensor[coef_sign<0]
-print("size:{}, positive:{}, negative:{}".format(test_tensor.size(0), positive_tensor.size(0), negative_tensor.size(0)))
+print("size:{}, positive:{}, negative:{}".format(test_tensor.size(), positive_tensor.size(), negative_tensor.size()))
 # %%
 # X_fit_to_tensor可以替换为：
 test_tensor = torch.Tensor(compressed_X_fit)

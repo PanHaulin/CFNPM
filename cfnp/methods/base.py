@@ -4,9 +4,7 @@ from cfnp.modules.gumble import GumbleCompressionModule
 from typing import Any, Callable, Dict, List, Sequence, Tuple
 import torch
 from argparse import ArgumentParser
-from cfnp.utils.helper import X_fit_to_tensor
 import numpy as np
-import copy
 from collections import Counter
 
 class BaseModel(pl.LightningModule):
@@ -37,8 +35,8 @@ class BaseModel(pl.LightningModule):
         # X_fit = X_fit_to_tensor(X_fit)
         # self.register_buffer('X_fit', X_fit)
         self.register_buffer('X_fit', torch.Tensor(X_fit))
-        self.n_fit = X_fit.size(2)
-        self.n_features = X_fit.size(1)
+        self.n_fit = self.X_fit.size(0)
+        self.n_features = self.X_fit.size(1)
         self.n_compressed = round(self.n_fit * (1- cmp_ratio))
         self.cmp_ratio = cmp_ratio
         self.module_name = module
@@ -129,6 +127,7 @@ class ClassSeparationBaseModel(BaseModel):
     类分离，正负类各自输入到各自的module中
     init中对输入进行类分离
     forward中对输出进行合并
+    coef_fit 可能无法提供良好的初始化
     '''
     def __init__(self, coef_fit, **kwargs):
         super(ClassSeparationBaseModel, ClassSeparationBaseModel).__init__(**kwargs)
@@ -169,6 +168,36 @@ class ClassSeparationBaseModel(BaseModel):
 
 class AddInstanceBaseModel(BaseModel):
     '''
-    增加一些实例到压缩实例集合中
+    添加一些原有实例到压缩实例集合中
+    原有实例对应的coef_fit应该是会变动的
     '''
-    pass
+    def __init__(self, add_ratio, **kwargs):
+        super(ClassSeparationBaseModel, ClassSeparationBaseModel).__init__(**kwargs)
+        self.n_add = int(self.n_compressed * add_ratio)
+        self.n_compressed = self.n_compressed - self.n_add
+        
+        randints = np.random.randint(0, self.n_fit, (self.n_add,))
+        self.X_add = self.X_fit.view(self.X_fit.size(2), self.X_fit.size(1))[randints]
+
+        # 重新初始化module
+        if 'resnet' in self.module_name:
+            self.module = getattr(conv, self.module_name)(self.n_features, self.n_compressed)
+            self.X_fit = self.X_fit.view(1, self.X_fit.size(1), self.X_fit.size(0), 1)
+        else:
+            self.module = GumbleCompressionModule()
+    
+    @staticmethod
+    def add_specific_args(parent_parser: ArgumentParser):
+        parser = parent_parser.add_argument_group('add_base')
+        parser.add_argument('--add_ratio', type=float, required=True)
+        return parent_parser
+
+    @property
+    def learnable_params(self) -> List[Dict[str, Any]]:
+        return [
+            {"name": "module", "params": self.module.parameters()},
+        ]
+
+    def forward(self):
+        X_compression = torch.cat((self.module(self.X_fit), self.X_add),dim=0)
+        return X_compression

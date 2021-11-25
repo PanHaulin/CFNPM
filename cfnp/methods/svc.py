@@ -137,6 +137,7 @@ def create_svc_class(base):
 
             return parent_parser
 
+        # 以下函数为svc独有的外部调用函数
         @staticmethod
         def build_np_model(**kwargs):
             return SVC(kernel=kwargs['kernel'], C=kwargs['C'], gamma=kwargs['gamma'], coef0=kwargs['coef0'], degree=kwargs['degree'])

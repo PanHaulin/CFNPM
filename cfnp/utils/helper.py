@@ -49,12 +49,12 @@ def multi_to_binary(y: np.ndarray) -> np.ndarray:
     return labels_true, labels_false
 
 
-def X_fit_to_tensor(X_fit):
-    X_fit_tensor = X_fit.reshape(-1, X_fit.shape[0]) 
-    X_fit_tensor = np.expand_dims(X_fit_tensor, axis=-1)
-    X_fit_tensor = np.expand_dims(X_fit_tensor, axis=0)
-    X_fit_tensor = torch.Tensor(X_fit_tensor)
-    return X_fit_tensor
+# def X_fit_to_tensor(X_fit):
+#     X_fit_tensor = X_fit.reshape(-1, X_fit.shape[0]) 
+#     X_fit_tensor = np.expand_dims(X_fit_tensor, axis=-1)
+#     X_fit_tensor = np.expand_dims(X_fit_tensor, axis=0)
+#     X_fit_tensor = torch.Tensor(X_fit_tensor)
+#     return X_fit_tensor
 
 def eval_classification(pred_func, data):
     pass
