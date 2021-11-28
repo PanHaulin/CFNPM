@@ -1,8 +1,10 @@
+from math import ceil, sqrt
 import torch
 import torch.nn as nn
 from torch.distributions import Normal, kl_divergence
 from collections import Counter
 import numpy as np
+import re
 
 def save_grad(name, grads):
     def hook(grad):
@@ -56,11 +58,35 @@ def multi_to_binary(y: np.ndarray) -> np.ndarray:
 #     X_fit_tensor = torch.Tensor(X_fit_tensor)
 #     return X_fit_tensor
 
-def eval_classification(pred_func, data):
-    pass
+# def eval_classification(pred_func, data):
+#     pass
 
-def eval_regression(pred_fun, data):
-    pass
+# def eval_regression(pred_fun, data):
+#     pass
 
-def log_classification():
-    pass
+# def log_classification():
+#     pass
+
+def get_max_n_ins(limited_memory, n_features, percision=64):
+    # 解析字符串
+    memory_size = float(re.sub("\D", "", limited_memory))
+    memory_unit = ''.join(re.findall(r'[A-Za-z]', limited_memory))
+
+    # 转换为bit
+    if memory_unit not in ['B', 'KB', 'MB', 'GB']:
+        assert False, "Memory unit mast in ['B', 'KB', 'MB', 'GB']"
+    elif memory_unit == 'B':
+        memory_size = memory_size * 8
+    elif memory_unit == 'KB':
+        memory_size = memory_size * 1024 * 8
+    elif memory_unit == 'MB':
+        memory_size = memory_size * 1024 *1024 * 8
+    else:
+        memory_size = memory_size * 1024 * 1024 * 1024 * 8
+    
+    # 可以存储的数据量 n_ins * n_features
+    max_data_ins = ceil(memory_size/percision/n_features)
+    # 容许计算km的数巨量
+    max_km_ins = ceil(sqrt(memory_size/percision))
+
+    return min(max_data_ins, max_km_ins)

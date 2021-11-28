@@ -11,7 +11,7 @@ class BaseModel(pl.LightningModule):
     def __init__(
         self,
         X_fit: np.array,
-        cmp_ratio: float,
+        n_compressed: float,
         module: str,
         max_epochs: int,
         batch_size: int,
@@ -37,8 +37,7 @@ class BaseModel(pl.LightningModule):
         self.register_buffer('X_fit', torch.Tensor(X_fit))
         self.n_fit = self.X_fit.size(0)
         self.n_features = self.X_fit.size(1)
-        self.n_compressed = round(self.n_fit * (1- cmp_ratio))
-        self.cmp_ratio = cmp_ratio
+        self.n_compressed = n_compressed
         self.module_name = module
 
         self.extra_kwargs = kwargs
@@ -59,7 +58,8 @@ class BaseModel(pl.LightningModule):
         parser.add_argument("--num_workers", type=int, default=8)
 
         # compression
-        parser.add_argument("--cmp_ratio", type=float, required=True)
+        parser.add_argument("--cmp_ratio", type=float, default=None)
+        parser.add_argument('--limited_memory', type=str, default=None)
 
         # hyper-opt
         parser.add_argument("--max_evals", type=int, default=100)
@@ -108,10 +108,21 @@ class BaseModel(pl.LightningModule):
         return self.module(self.X_fit)
 
     def on_train_end(self):
+        memory_need = max(self.n_compressed*(self.n_features+1)*64/8, self.n_compressed*self.n_compressed*64/8)
+        if memory_need < 1024:
+            memory_need = str(round(memory_need,2)) + 'B'
+        elif memory_need < 1024*1024:
+            memory_need = str(round(memory_need/1024, 2)) + 'KB'
+        elif memory_need < 1024*1024*1024:
+            memory_need = str(round(memory_need/1024/1024, 2)) + 'MB'
+        else:
+            memory_need = str(round(memory_need/1024/1024/1024, 2)) + 'GB'
         self.logger.log_metrics({
+            'n_features': self.n_features,
             'actual_ratio': 1-(self.n_compressed-self.n_fit),
             'before_n_ins': self.n_fit,
-            'after_n_ins': self.n_compressed
+            'after_n_ins': self.n_compressed,
+            'max_memory_used': memory_need
         })
     
     @staticmethod

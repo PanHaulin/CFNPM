@@ -43,7 +43,8 @@ class StratifiedSampling(RegressionBaseline):
             y_bin = kb.fit_transform(y_train.reshape(-1,1))
             Xy_train = np.concatenate((X_train, y_train.reshape(-1,1)), axis=1)
             # 求k次平均
-            skf = StratifiedShuffleSplit(n_splits=args.stratified_sampling_k_fold, test_size=args.cmp_ratio, random_state=args.manual_seed)
+            train_size = args.n_compressed / X_train.shape[0]
+            skf = StratifiedShuffleSplit(n_splits=args.stratified_sampling_k_fold, train_size=train_size, random_state=args.manual_seed)
             for train_idx, _ in skf.split(Xy_train, y_bin):
                 # compressed by stratified sampling
                 X_compressed = Xy_train[train_idx][:,:-1]

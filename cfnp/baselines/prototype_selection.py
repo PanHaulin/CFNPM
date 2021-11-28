@@ -29,7 +29,7 @@ class PrototypeSelection(ClasscificationBaseline):
         label_distribution = sorted(Counter(y_train).items())
         n_negative = label_distribution[0][1]
         n_positive = label_distribution[1][1]
-        n_compressed = int((1 - args.cmp_ratio) * (n_negative+ n_positive))
+        n_compressed = args.n_compressed
 
         # 计算正负样本数
         if args.prototype_selection_sampling_strategy == 'maintain':

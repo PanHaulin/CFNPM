@@ -1,3 +1,5 @@
+from logging import error
+from math import ceil
 import random
 
 import numpy as np
@@ -18,12 +20,15 @@ import os
 from pathlib import Path
 from cfnp.args.dataset import REGRESSION_DATASETS
 import json
-
+from utils.helper import get_max_n_ins
 
 def main():
     # 获取参数
     print("==> parsing args")
     args = parse_args_main()
+
+    # 必需参数检查:压缩超参至少一个不为None
+    assert args.cmp_ratio is None and args.limited_memory is None
 
     # 设置随机种子
     if args.manual_seed is None:
@@ -60,7 +65,7 @@ def main():
     print("==> load data")
     X_train, y_train, X_test, y_test = load_data(
         args.data_source, args.dataset_name)
-
+    
     # 创建原始机器学习模型并进行超参数调优, 并：
     # 1. 获取 X_fit, y_fit
     # 2. 返回相关参数 original_params
@@ -69,6 +74,19 @@ def main():
     
     X_fit, y_fit, original_params, args = MethodClass.train_original_model(
         logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
+    
+    # 根据容量大小计算最大ins限制    
+    if args.limited_memory is None:
+        args.n_compressed = int(X_fit.shape[0] * (1- args.cmp_ratio))
+    elif args.cmp_ratio is None:
+        args.n_compressed = get_max_n_ins(args.limited_memory, percision=64, n_feautres=X_fit.shape[1])
+    else:
+        n_compressed = int(X_fit.shape[0] * (1- args.cmp_ratio))
+        max_n_ins = get_max_n_ins(args.limited_memory, percision=64, n_feautres=X_fit.shape[1])
+        if n_compressed > max_n_ins:
+            args.n_compressed = max_n_ins
+        else:
+            args.n_compressed = n_compressed
 
     # 逐个 baseline 运行
     if args.run_baselines:
