@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from cfnp.args.dataset import REGRESSION_DATASETS
 import json
-from utils.helper import get_max_n_ins
+from cfnp.utils.helper import get_max_n_ins
 
 def main():
     # 获取参数
@@ -28,7 +28,7 @@ def main():
     args = parse_args_main()
 
     # 必需参数检查:压缩超参至少一个不为None
-    assert args.cmp_ratio is None and args.limited_memory is None
+    assert args.cmp_ratio is None or args.limited_memory is None
 
     # 设置随机种子
     if args.manual_seed is None:
@@ -55,6 +55,11 @@ def main():
         description=args.logger_description,
         # tags=args.logger_tags,
     )
+    if args.resume and args.resume_checkpoints_dir != None:
+        p = args.resume_checkpoints_dir.split("-")
+        args.resume_version = p[0] + '-' +p[1]
+    else:
+        args.resume_version = None
 
     # 生成checkpoint路径
     if not args.checkpoints_dir:
@@ -146,9 +151,9 @@ def main():
     # 初始化模型
     print("==> initializing model")
     if not args.evaluate:
-        model = MethodClass(X_fit=X_fit, data=(X_fit, y_fit, X_test, y_test), **original_params,  **args.__dict__)
+        model = MethodClass(X_fit=X_fit, data=(X_fit, y_fit, X_test, y_test), **original_params, **args.__dict__)
     else:
-        model  = MethodClass.load_from_checkpoint(**args.__dict__)
+        model  = MethodClass.load_from_checkpoint(X_fit=X_fit, data=(X_fit, y_fit, X_test, y_test), **original_params, **args.__dict__)
 
     # 初始化 callbacks
     print("==> initializing callbacks")
@@ -188,26 +193,30 @@ def main():
         print("==> training and validating")
         if args.resume:
             # 获取pl model的ckpt文件名
-            file_name = None
-            list_dir = os.listdir(args.checkpoints_dir)
-            for f in list_dir:
-                if f.split(".")[-1] == "ckpt":
-                    file_name = f
-                    break 
-            # 读取权重进行训练
+            file_name = 'last.ckpt'
+            # list_dir = os.listdir(args.checkpoints_dir)
+            # for f in list_dir:
+            #     if f.split(".")[-1] == "ckpt":
+            #         file_name = f
+            #         break 
+            # # 读取权重进行训练
             trainer.fit(model, datamodule=dm, ckpt_path=args.checkpoints_dir + file_name)
         else:
             trainer.fit(model, datamodule=dm)
 
-    # 内部测试
-    print("==> testing inside models")
-    trainer.test(model, datamodule=dm)
+        # 用最好的模型测试
+        print("==> testing best model")
+        best_model_path = ckpt.best_model_path
+        model  = MethodClass.load_from_checkpoint(X_fit=X_fit, data=(X_fit, y_fit, X_test, y_test), **original_params, checkpoint_path=best_model_path, **args.__dict__)
+        trainer.test(model, datamodule=dm)
+    else:
+        # 测试
+        print("==> testing loaded model")
+        trainer.test(model, datamodule=dm)
 
-
-    # 外部测试
-    print("==> testing outside models")
-    model.eval_compression_results(logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
-
+    # 外部测试（depercated）
+    # print("==> testing outside models")
+    # model.eval_compression_results(logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
 
     logger.finalize(status='success')
 

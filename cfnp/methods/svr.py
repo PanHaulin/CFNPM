@@ -10,7 +10,8 @@ import torch.nn.functional as F
 import warnings
 import pickle
 # from sklearn.metrics import accuracy_score
-from sklearn.metrics import mean_absolute_error, mean_squared_error as mae_score, mse_score
+from sklearn.metrics import mean_absolute_error as mae_score
+from sklearn.metrics import mean_squared_error as mse_score
 from cfnp.utils.km import get_cal_km_func_numpy, get_cal_km_func_torch
 import numpy as np
 from cuml.svm import SVR
@@ -144,9 +145,12 @@ def create_svr_class(base):
             X_train, y_train, X_test, y_test = data
 
             # 生成存储路径
-            time_tick = datetime.now().strftime('%y%m%D%H%M%S')
-            args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
-                args.kernel, logger.version, args.logger_run_name, time_tick)
+            if args.resume_checkpoints_dir == None:
+                time_tick = datetime.now().strftime('%y%m%D%H%M%S')
+                args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
+                    args.kernel, logger.version, args.logger_run_name, time_tick)
+            else:
+                args.checkpoints_dir += '/{}/{}/'.format(args.kernel, args.resume_checkpoints_dir)
 
             if Path(args.checkpoints_dir).is_dir():
                 if args.resume:

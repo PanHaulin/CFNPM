@@ -146,16 +146,20 @@ def create_svc_class(base):
             X_train, y_train, X_test, y_test = data
 
             # 生成存储路径
-            time_tick = datetime.now().strftime('%y%m%D%H%M%S')
-            args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
-                args.kernel, logger.version, args.logger_run_name, time_tick)
+            if args.resume_checkpoints_dir == None:
+                time_tick = datetime.now().strftime('%y%m%D%H%M%S')
+                args.checkpoints_dir += '/{}/{}-{}-{}/'.format(
+                    args.kernel, logger.version, args.logger_run_name, time_tick)
+            else:
+                args.checkpoints_dir += '/{}/{}/'.format(args.kernel, args.resume_checkpoints_dir)
+
 
             if Path(args.checkpoints_dir).is_dir():
                 if args.resume:
                     # 目录存在且指定重用
                     print('>> Load exist orignal model')
                     model = pickle.load(
-                        open(args.checkpoints_dir+'original_model.pkl'))
+                        open(args.checkpoints_dir+'original_model.pkl', 'rb'))
             else:
                 # 指定的目录不存在
                 if args.resume:

@@ -49,7 +49,8 @@ class PrototypeSelection(ClasscificationBaseline):
                 n_positive_compressed = n_compressed - n_negative_compressed
 
         if args.resume:
-            best_model = pickle.load(open(args.checkpoints_dir+'prototype_selection_model.pkl'))
+            print('load exist prototype selection model')
+            best_model = pickle.load(open(args.checkpoints_dir+'prototype_selection_model.pkl', 'rb'))
         else:
             # 求NearMiss 1-3 的平均
             for i in range(1,3):
@@ -100,5 +101,5 @@ class PrototypeSelection(ClasscificationBaseline):
             baseline_name='prototype_selection',
             logger=logger,
             best_acc=(best_acc_train, best_acc_test),
-            avg_acc=(np.mean(train_acc_list), np.mean(test_acc_list))
+            avg_acc=(np.mean(train_acc_list) if len(train_acc_list)!=0 else best_acc_train, np.mean(test_acc_list) if len(test_acc_list)!=0 else best_acc_test)
         )

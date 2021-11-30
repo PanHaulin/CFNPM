@@ -17,12 +17,16 @@ python ./main.py   \
     --logger_project_name "cfnp/svc" \
     --logger_run_name base_svc_rbf_ratio=0.9 \
     --logger_description "run pipelines, base model=base, method=svc, kernel=linear, cmp_ratio=0.9" \
-    --max_epochs 50 \
+    --max_epochs 8 \
     --num_sanity_val_steps 0 \
     --optimizer adam \
     --lr 0.1 \
     --gpus 1 \
     --run_baselines \
+    --checkpoint_save_last \
+    --resume \
+    --resume_checkpoints_dir "SVC-14-base_svc_rbf_ratio=0.9-211111/30/21091912"
+    # --resume_from_checkpoint "SVC-14-base_svc_rbf_ratio=0.9-211111/30/21091912/ckpt.last"
     # --patience 10 \
     # --fast_dev_run \
     # --prototype_generation_k_fold 1 \

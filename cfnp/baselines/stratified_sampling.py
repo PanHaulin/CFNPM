@@ -35,7 +35,8 @@ class StratifiedSampling(RegressionBaseline):
         test_mse_list = []
 
         if args.resume:
-            best_model = pickle.load(open(args.checkpoints_dir+'stratified_sampling_model.pkl'))
+            print('load exist stratified sampling model')
+            best_model = pickle.load(open(args.checkpoints_dir+'stratified_sampling_model.pkl', 'rb'))
         else:
             
             # 数据分箱
@@ -99,7 +100,7 @@ class StratifiedSampling(RegressionBaseline):
             logger=logger,
             best_mae=(best_mae_train, best_mae_test),
             best_mse=(best_mse_train, best_mse_test),
-            avg_mae=(np.mean(train_mae_list), np.mean(test_mae_list)),
-            avg_mse=(np.mean(train_mse_list), np.mean(test_mse_list))
+            avg_mae=(np.mean(train_mae_list) if len(train_mae_list)!=0 else best_mae_train , np.mean(test_mae_list) if len(test_mae_list)!=0 else best_mae_test) ,
+            avg_mse=(np.mean(train_mse_list) if len(train_mse_list)!=0 else best_mse_train, np.mean(test_mse_list) if len(test_mse_list)!=0 else best_mse_test)
         )
         

@@ -1,8 +1,7 @@
 This repository is focus on Model Compression for Non-parametric Models using deep learning.
 ## TODO
-- [ ] memory limitation about kernel metrics or datasets
+- [x] memory limitation about kernel metrics or datasets
 - [ ] add some large datasets
-- [ ] saving the params of original model
 - [ ] completing gumble-softmax component
 - [ ] completing all available methods
 - [ ] completing all available workflow

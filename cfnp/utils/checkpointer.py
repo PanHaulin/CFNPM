@@ -86,7 +86,7 @@ class MonitorCheckpointer(ModelCheckpoint):
             return MonitorCheckpointer(
                 args,
                 logdir=args.checkpoints_dir,
-                filename= "{epoch:02d}-{pl_vallid_acc:.2f}-{pl_valid_loss:.2f}",
+                filename= "{epoch:02d}-{pl_valid_acc:.6f}-{pl_valid_loss:.6f}",
                 frequency=args.checkpoint_frequency,
                 monitor='pl_valid_acc',
                 mode='max',

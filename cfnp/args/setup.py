@@ -21,6 +21,10 @@ def parse_args_main():
     parser = MODULES[temp_args.module].add_specific_args(parser)
     parser = METHODS[temp_args.method](BASES[temp_args.base]).add_specific_args(parser)
 
+    # resume
+    parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--resume_checkpoints_dir', type=str, default=None)
+
     # add pytorch lightning trainer args
     parser = pl.Trainer.add_argparse_args(parser)
 
@@ -63,8 +67,7 @@ def parse_args_main():
     # evaluate
     parser.add_argument('--evaluate', action='store_true')
 
-    # resume
-    parser.add_argument('--resume', action='store_true')
+    
 
     parser.add_argument("--manual_seed", type=int)
 

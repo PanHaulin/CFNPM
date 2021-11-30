@@ -48,7 +48,8 @@ class PrototypeGeneration(ClasscificationBaseline):
                 n_positive_compressed = n_compressed - n_negative_compressed
 
         if args.resume:
-            best_model = pickle.load(open(args.checkpoints_dir+'prototype_generation_model.pkl'))
+            print('load exist prototype generation model')
+            best_model = pickle.load(open(args.checkpoints_dir+'prototype_generation_model.pkl', 'rb'))
         else:
             # 求k次平均
             ramdom_states = np.random.randint(0, args.manual_seed, size=args.prototype_generation_k_fold)
@@ -79,7 +80,7 @@ class PrototypeGeneration(ClasscificationBaseline):
                     best_model = model
                 else:
                     del model
-                
+
             # save model
             pickle.dump(best_model, open(args.checkpoints_dir+'prototype_generation_model.pkl', "wb"))
 
@@ -99,7 +100,7 @@ class PrototypeGeneration(ClasscificationBaseline):
             baseline_name='prototype_generation',
             logger=logger,
             best_acc=(best_acc_train, best_acc_test),
-            avg_acc=(np.mean(train_acc_list), np.mean(test_acc_list))
+            avg_acc=(np.mean(train_acc_list) if len(train_acc_list)!=0 else best_acc_train, np.mean(test_acc_list) if len(test_acc_list)!=0 else best_acc_test)
         )
 
 

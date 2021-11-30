@@ -86,7 +86,7 @@ def get_max_n_ins(limited_memory, n_features, percision=64):
     
     # 可以存储的数据量 n_ins * n_features
     max_data_ins = ceil(memory_size/percision/n_features)
-    # 容许计算km的数巨量
+    # 容许计算km的数据量
     max_km_ins = ceil(sqrt(memory_size/percision))
 
     return min(max_data_ins, max_km_ins)
