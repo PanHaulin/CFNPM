@@ -6,6 +6,7 @@ import torch
 from argparse import ArgumentParser
 import numpy as np
 from collections import Counter
+from cfnp.utils.helper import bit_to_str
 
 class BaseModel(pl.LightningModule):
     def __init__(
@@ -60,6 +61,7 @@ class BaseModel(pl.LightningModule):
         # compression
         parser.add_argument("--cmp_ratio", type=float, default=None)
         parser.add_argument('--limited_memory', type=str, default=None)
+        parser.add_argument('--limited_ratio', type=float, default=0.1)
 
         # hyper-opt
         parser.add_argument("--max_evals", type=int, default=100)
@@ -108,15 +110,16 @@ class BaseModel(pl.LightningModule):
         return self.module(self.X_fit)
 
     def on_train_end(self):
-        memory_need = max(self.n_compressed*(self.n_features+1)*64/8, self.n_compressed*self.n_compressed*64/8)
-        if memory_need < 1024:
-            memory_need = str(round(memory_need,2)) + 'B'
-        elif memory_need < 1024*1024:
-            memory_need = str(round(memory_need/1024, 2)) + 'KB'
-        elif memory_need < 1024*1024*1024:
-            memory_need = str(round(memory_need/1024/1024, 2)) + 'MB'
-        else:
-            memory_need = str(round(memory_need/1024/1024/1024, 2)) + 'GB'
+        memory_need = max(self.n_compressed*(self.n_features+1)*64, self.n_compressed*self.n_compressed*64)
+        memory_need = bit_to_str(memory_need)
+        # if memory_need < 1024:
+        #     memory_need = str(round(memory_need,2)) + 'B'
+        # elif memory_need < 1024*1024:
+        #     memory_need = str(round(memory_need/1024, 2)) + 'KB'
+        # elif memory_need < 1024*1024*1024:
+        #     memory_need = str(round(memory_need/1024/1024, 2)) + 'MB'
+        # else:
+        #     memory_need = str(round(memory_need/1024/1024/1024, 2)) + 'GB'
         self.logger.log_metrics({
             'n_features': self.n_features,
             'actual_ratio': 1-(self.n_compressed-self.n_fit),

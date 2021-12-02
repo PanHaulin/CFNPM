@@ -1,6 +1,8 @@
 This repository is focus on Model Compression for Non-parametric Models using deep learning.
 ## TODO
 - [x] memory limitation about kernel metrics or datasets
+- [ ] train_batch and test_batch
+- [ ] fix multi-class datasets
 - [ ] add some large datasets
 - [ ] completing gumble-softmax component
 - [ ] completing all available methods
@@ -39,10 +41,9 @@ This repository is focus on Model Compression for Non-parametric Models using de
 
 ## Setup: New a conda env and install required packages
 ```
-pip install -r requirements.txt
 conda env create -f env.yaml
 conda activate pt-rapids
-pup install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Run Bash files in folder

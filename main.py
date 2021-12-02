@@ -1,5 +1,4 @@
 from logging import error
-from math import ceil
 import random
 
 import numpy as np
@@ -20,15 +19,12 @@ import os
 from pathlib import Path
 from cfnp.args.dataset import REGRESSION_DATASETS
 import json
-from cfnp.utils.helper import get_max_n_ins
+from cfnp.utils.helper import get_max_n_ins, bit_to_str
 
 def main():
     # 获取参数
     print("==> parsing args")
     args = parse_args_main()
-
-    # 必需参数检查:压缩超参至少一个不为None
-    assert args.cmp_ratio is None or args.limited_memory is None
 
     # 设置随机种子
     if args.manual_seed is None:
@@ -80,18 +76,31 @@ def main():
     X_fit, y_fit, original_params, args = MethodClass.train_original_model(
         logger=logger, data=(X_train, y_train, X_test, y_test), args=args)
     
-    # 根据容量大小计算最大ins限制    
-    if args.limited_memory is None:
-        args.n_compressed = int(X_fit.shape[0] * (1- args.cmp_ratio))
-    elif args.cmp_ratio is None:
-        args.n_compressed = get_max_n_ins(args.limited_memory, percision=64, n_feautres=X_fit.shape[1])
-    else:
+    # 根据容量大小计算最大ins限制
+    if args.cmp_ratio is not None and args.limited_memory is not None:
+        print('calculate n_compressed by args.cmp_ratio and args.limited_memory')
         n_compressed = int(X_fit.shape[0] * (1- args.cmp_ratio))
-        max_n_ins = get_max_n_ins(args.limited_memory, percision=64, n_feautres=X_fit.shape[1])
+        max_n_ins = get_max_n_ins(args.limited_memory, percision=64, n_features=X_fit.shape[1])
         if n_compressed > max_n_ins:
             args.n_compressed = max_n_ins
         else:
             args.n_compressed = n_compressed
+    elif args.limited_memory is not None:
+        print('calculate n_compressed by args.limited_memory')
+        args.n_compressed = get_max_n_ins(args.limited_memory, percision=64, n_features=X_fit.shape[1])
+    elif args.cmp_ratio is not None:
+        print('calculate n_compressed by args.cmp_ratio')
+        args.n_compressed = int(X_fit.shape[0] * (1- args.cmp_ratio))
+    else:
+        # args.cmp_ratio is None and args.limited_memory is None
+        print('calculate n_compressed by default: 20% max_memory_used')
+        # 默认使用最大占用内存的20%,且
+        max_data_size = X_fit.shape[0] * (X_fit.shape[1] + 1) * 64
+        max_km_size = X_fit.shape[0] * X_fit.shape[0] * 64
+        args.limited_memory = bit_to_str(args.limited_ratio * max(max_data_size, max_km_size), floor=True)
+        args.n_compressed = get_max_n_ins(args.limited_memory, percision=64, n_features=X_fit.shape[1])
+
+    print('cmp_ratio:{}, limited_memory:{}, n_compressed:{}'.format(args.cmp_ratio, args.limited_memory, args.n_compressed))
 
     # 逐个 baseline 运行
     if args.run_baselines:

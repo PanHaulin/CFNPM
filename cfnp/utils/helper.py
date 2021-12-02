@@ -1,4 +1,4 @@
-from math import ceil, sqrt
+from math import floor, sqrt
 import torch
 import torch.nn as nn
 from torch.distributions import Normal, kl_divergence
@@ -69,7 +69,10 @@ def multi_to_binary(y: np.ndarray) -> np.ndarray:
 
 def get_max_n_ins(limited_memory, n_features, percision=64):
     # 解析字符串
-    memory_size = float(re.sub("\D", "", limited_memory))
+    # memory_size = re.findall(r'\d+\.*\d*', limited_memory)[0]
+    
+    memory_size = filter(lambda ch: ch in '0123456789.', limited_memory)
+    memory_size = float(''.join(list(memory_size)))
     memory_unit = ''.join(re.findall(r'[A-Za-z]', limited_memory))
 
     # 转换为bit
@@ -85,8 +88,31 @@ def get_max_n_ins(limited_memory, n_features, percision=64):
         memory_size = memory_size * 1024 * 1024 * 1024 * 8
     
     # 可以存储的数据量 n_ins * n_features
-    max_data_ins = ceil(memory_size/percision/n_features)
+    max_data_ins = floor(memory_size/percision/(n_features+1))
     # 容许计算km的数据量
-    max_km_ins = ceil(sqrt(memory_size/percision))
+    max_km_ins = floor(sqrt(memory_size/percision))
 
-    return min(max_data_ins, max_km_ins)
+    return min(max_data_ins, max_km_ins) # 二者中最小的
+
+def bit_to_str(num,floor=False):
+    # ceil，整数除最高位外均变成0
+    num /= 8 # bit to bytes
+    if num < 1024:
+        num = round(num,2)
+        unit = 'B'
+    elif num < 1024*1024:
+        num = round(num/1024, 2)
+        unit = 'KB'
+    elif num < 1024*1024*1024:
+        num = round(num/1024/1024, 2)
+        unit = 'MB'
+    else:
+        num = round(num/1024/1024/1024, 2)
+        unit = 'GB'
+
+    if floor:
+        num = int(num)
+        len_num = len(str(int(num)))
+        num -= (num % 10**(len_num-1))
+    
+    return str(num) + unit

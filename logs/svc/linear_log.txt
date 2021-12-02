@@ -1,0 +1,24 @@
+linear
+a9a
+run limited memory default
+run cmp_ratio=0.9
+ijcnn1
+run limited memory default
+run cmp_ratio=0.9
+w8a
+run limited memory default
+run cmp_ratio=0.9
+mushrooms
+run limited memory default
+run cmp_ratio=0.9
+phishing
+run limited memory default
+run cmp_ratio=0.9
+splice
+run limited memory default
+run cmp_ratio=0.9
+dna.scale
+run limited memory default
+run cmp_ratio=0.9
+pendigits
+run limited memory default
